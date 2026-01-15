@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+from sagellm_benchmark.metrics import BenchmarkMetrics, MetricsCollector
+from sagellm_benchmark.runner import BenchmarkConfig, BenchmarkRunner, run_year1_benchmark
+from sagellm_benchmark.workloads import YEAR1_WORKLOADS, WorkloadConfig, WorkloadType
 
-# Public API will be defined here after Task0.2 implementation
-# Expected exports:
-# - BenchmarkRunner
-# - WorkloadConfig
-# - MetricsCollector
+__version__ = "0.1.0"
 
 __all__ = [
     "__version__",
+    # Metrics
+    "BenchmarkMetrics",
+    "MetricsCollector",
+    # Runner
+    "BenchmarkRunner",
+    "BenchmarkConfig",
+    "run_year1_benchmark",
+    # Workloads
+    "WorkloadConfig",
+    "WorkloadType",
+    "YEAR1_WORKLOADS",
 ]
