@@ -1,11 +1,11 @@
-# sagellm-demo
+# sagellm-benchmark
 
-Demo Runner & End-to-End Testing for sageLLM inference engine.
+Benchmark Suite & End-to-End Testing for sageLLM inference engine.
 
 ## Overview
 
-This package provides the unified demo runner for Year 1/2/3 validation:
-- E2E workload execution (Task0.2)
+This package provides comprehensive benchmarking and validation for Year 1/2/3:
+- E2E workload execution and performance benchmarking
 - Metrics collection and reporting
 - Mock-first testing infrastructure
 - Integration with all sageLLM modules
@@ -13,25 +13,25 @@ This package provides the unified demo runner for Year 1/2/3 validation:
 ## Installation
 
 ```bash
-pip install isagellm-demo
+pip install isagellm-benchmark
 ```
 
 ## Quick Start
 
 ```bash
-# Run Year 1 demo with mock backend
-sagellm-demo run --workload year1 --backend mock
+# Run Year 1 benchmark with mock backend
+sagellm-benchmark run --workload year1 --backend mock
 
 # Run with real LMDeploy backend
-sagellm-demo run --workload year1 --backend lmdeploy --model Qwen/Qwen2-7B
+sagellm-benchmark run --workload year1 --backend lmdeploy --model Qwen/Qwen2-7B
 
 # Generate metrics report
-sagellm-demo report --output metrics.json
+sagellm-benchmark report --output metrics.json
 ```
 
-## Year 1 Demo Contract
+## Year 1 Benchmark Contract
 
-The demo validates all modules against this contract:
+The benchmark validates all modules against this contract:
 
 ### Workload (3 segments)
 1. **Short input**: 128 tokens prompt → 128 tokens output
@@ -58,7 +58,7 @@ The demo validates all modules against this contract:
 
 ## Team Assignment
 
-- **Task0.2 E2E Demo Runner**: 张书豪老师团队
+- **Task0.2 E2E Benchmark Suite**: 张书豪老师团队
 
 ## Dependencies
 

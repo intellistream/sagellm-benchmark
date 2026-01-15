@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "isagellm-demo"
+name = "isagellm-benchmark"
 version = "0.1.0"
-description = "Demo Runner & E2E Testing for sageLLM"
+description = "Benchmark Suite & E2E Testing for sageLLM"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Private"}
 authors = [
     {name = "IntelliStream Team", email = "intellistream@example.com"}
 ]
-keywords = ["llm", "inference", "demo", "testing", "domestic-hardware"]
+keywords = ["llm", "inference", "benchmark", "testing", "domestic-hardware"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -43,12 +43,12 @@ full = [
 ]
 
 [project.scripts]
-sagellm-demo = "sagellm_demo.cli:main"
+sagellm-benchmark = "sagellm_benchmark.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/intellistream/sagellm-demo"
-Repository = "https://github.com/intellistream/sagellm-demo"
-Issues = "https://github.com/intellistream/sagellm-demo/issues"
+Homepage = "https://github.com/intellistream/sagellm-benchmark"
+Repository = "https://github.com/intellistream/sagellm-benchmark"
+Issues = "https://github.com/intellistream/sagellm-benchmark/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
