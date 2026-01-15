@@ -21,10 +21,9 @@ classifiers = [
 ]
 
 dependencies = [
-    "isagellm-protocol>=0.1.0",
-    "isagellm-backend>=0.1.0",
-    "isagellm-core>=0.1.0",
-    "pydantic>=2.0.0",
+    # Depend on the umbrella package (includes all sub-packages)
+    "isagellm>=0.1.0",
+    # CLI dependencies (may already be in isagellm, but explicit for standalone use)
     "click>=8.0.0",
     "rich>=13.0.0",
 ]
@@ -35,11 +34,6 @@ dev = [
     "pytest-cov>=4.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
-]
-full = [
-    "isagellm-kv-cache>=0.1.0",
-    "isagellm-comm>=0.1.0",
-    "isagellm-compression>=0.1.0",
 ]
 
 [project.scripts]
