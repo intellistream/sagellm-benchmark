@@ -9,7 +9,7 @@ description = "Benchmark Suite & E2E Testing for sageLLM"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Private" }
-authors = [{ name = "IntelliStream Team", email = "intellistream@example.com" }]
+authors = [{ name = "IntelliStream Team", email = "shuhao_zhang@hust.edu.cn" }]
 keywords = ["llm", "inference", "benchmark", "testing", "domestic-hardware"]
 classifiers = [
     "Development Status :: 3 - Alpha",
