@@ -346,19 +346,19 @@ on: [push, pull_request]
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Install
         run: pip install isagellm-benchmark
-      
+
       - name: Run Benchmark
         run: sagellm-benchmark run --workload year1 --backend mock
-      
+
       - name: Generate Report
         run: sagellm-benchmark report --format markdown > REPORT.md
-      
+
       - name: Upload Results
         uses: actions/upload-artifact@v3
         with:

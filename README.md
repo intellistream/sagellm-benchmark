@@ -1,5 +1,11 @@
 # sagellm-benchmark
 
+[![CI](https://github.com/intellistream/sagellm-benchmark/actions/workflows/ci.yml/badge.svg)](https://github.com/intellistream/sagellm-benchmark/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/intellistream/sagellm-benchmark/branch/main/graph/badge.svg)](https://codecov.io/gh/intellistream/sagellm-benchmark)
+[![PyPI version](https://badge.fury.io/py/isagellm-benchmark.svg)](https://badge.fury.io/py/isagellm-benchmark)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: Private](https://img.shields.io/badge/License-Private-red.svg)](LICENSE)
+
 Benchmark Suite & End-to-End Testing for sageLLM inference engine.
 
 > **🚀 New to sageLLM Benchmark?** Check out [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide!
@@ -198,7 +204,7 @@ Example GitHub Actions workflow:
   run: |
     pip install isagellm-benchmark
     sagellm-benchmark run --workload year1 --backend mock
-    
+
 - name: Upload Results
   uses: actions/upload-artifact@v3
   with:
