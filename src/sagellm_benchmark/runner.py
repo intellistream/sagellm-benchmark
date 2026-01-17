@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from sagellm_benchmark.metrics import BenchmarkMetrics, MetricsCollector
+from sagellm_benchmark.metrics import MetricsAggregator
+from sagellm_benchmark.reporters import JSONReporter
+from sagellm_benchmark.types import AggregatedMetrics, BenchmarkResult
 from sagellm_benchmark.workloads import YEAR1_WORKLOADS, WorkloadConfig
 
 logger = logging.getLogger(__name__)
@@ -41,17 +43,17 @@ class BenchmarkRunner:
             config: Benchmark configuration.
         """
         self.config = config
-        self.results: dict[str, BenchmarkMetrics] = {}
+        self.results: dict[str, AggregatedMetrics] = {}
 
         # Setup logging
         if config.verbose:
             logging.basicConfig(level=logging.INFO)
 
-    async def run(self) -> dict[str, BenchmarkMetrics]:
+    async def run(self) -> dict[str, AggregatedMetrics]:
         """Run all workloads and collect metrics.
 
         Returns:
-            Dictionary mapping workload name to metrics.
+            Dictionary mapping workload name to aggregated metrics.
         """
         logger.info(f"Starting benchmark with {len(self.config.workloads)} workloads")
 
@@ -65,12 +67,13 @@ class BenchmarkRunner:
         # Run each workload
         for workload in self.config.workloads:
             logger.info(f"Running workload: {workload.name}")
-            metrics = await self._run_workload(workload)
-            self.results[workload.name] = metrics
+            aggregated_metrics = await self._run_workload(workload)
+            self.results[workload.name] = aggregated_metrics
 
-            # Save individual results
+            # Save individual results using JSONReporter
             output_file = self.config.output_dir / f"{workload.name}_metrics.json"
-            metrics.to_json(output_file)
+            reporter = JSONReporter()
+            reporter.generate(aggregated_metrics, path=output_file)
             logger.info(f"Saved metrics to {output_file}")
 
         # Save summary
@@ -79,17 +82,16 @@ class BenchmarkRunner:
         logger.info("Benchmark completed")
         return self.results
 
-    async def _run_workload(self, workload: WorkloadConfig) -> BenchmarkMetrics:
+    async def _run_workload(self, workload: WorkloadConfig) -> AggregatedMetrics:
         """Run a single workload.
 
         Args:
             workload: Workload configuration.
 
         Returns:
-            Aggregated metrics.
+            Aggregated metrics from all requests.
         """
-        collector = MetricsCollector()
-        collector.start()
+        results: list[BenchmarkResult] = []
 
         # Import Request here to avoid circular dependency
         try:
@@ -118,12 +120,15 @@ class BenchmarkRunner:
 
             responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Filter out exceptions
+            # Convert responses to BenchmarkResult
             for i, response in enumerate(responses):
                 if isinstance(response, Exception):
                     logger.error(f"Request {i} failed: {response}")
+                    # Skip failed requests (could create failed BenchmarkResult in future)
                 else:
-                    collector.record(response)
+                    # Convert Response to BenchmarkResult
+                    result = self._response_to_result(response)
+                    results.append(result)
 
         else:
             # Run requests sequentially
@@ -141,11 +146,39 @@ class BenchmarkRunner:
 
                 try:
                     response = await self.config.engine.execute(request)
-                    collector.record(response)
+                    result = self._response_to_result(response)
+                    results.append(result)
                 except Exception as e:
                     logger.error(f"Request {i} failed: {e}")
 
-        return collector.finish()
+        # Aggregate results
+        aggregator = MetricsAggregator()
+        return aggregator.aggregate(results)
+
+    def _response_to_result(self, response: Any) -> BenchmarkResult:
+        """Convert engine Response to BenchmarkResult.
+
+        Args:
+            response: Engine response object.
+
+        Returns:
+            BenchmarkResult instance.
+        """
+        from sagellm_benchmark.types import BenchmarkRequest
+
+        # Create request from response
+        request = BenchmarkRequest(
+            request_id=response.request_id,
+            prompt="",  # Not available in response
+            max_tokens=0,  # Not available in response
+        )
+
+        return BenchmarkResult(
+            request=request,
+            metrics=response.metrics,
+            output_text=response.output_text if hasattr(response, "output_text") else "",
+            error=response.error if hasattr(response, "error") else None,
+        )
 
     def _save_summary(self) -> None:
         """Save summary of all workloads."""
@@ -160,7 +193,15 @@ class BenchmarkRunner:
         }
 
         for name, metrics in self.results.items():
-            summary["workloads"][name] = metrics.to_dict()
+            # Convert AggregatedMetrics to dict for JSON serialization
+            summary["workloads"][name] = {
+                "total_requests": metrics.total_requests,
+                "successful_requests": metrics.successful_requests,
+                "failed_requests": metrics.failed_requests,
+                "avg_ttft_ms": metrics.avg_ttft_ms,
+                "avg_throughput_tps": metrics.avg_throughput_tps,
+                "error_rate": metrics.error_rate,
+            }
 
         import json
 
@@ -171,7 +212,7 @@ class BenchmarkRunner:
 
 async def run_year1_benchmark(
     engine: Any, output_dir: Path | str = Path("./benchmark_results")
-) -> dict[str, BenchmarkMetrics]:
+) -> dict[str, AggregatedMetrics]:
     """Convenience function to run Year 1 Demo Contract workloads.
 
     Args:
@@ -179,7 +220,7 @@ async def run_year1_benchmark(
         output_dir: Output directory for results.
 
     Returns:
-        Dictionary mapping workload name to metrics.
+        Dictionary mapping workload name to aggregated metrics.
     """
     config = BenchmarkConfig(
         engine=engine,
