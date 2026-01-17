@@ -50,4 +50,4 @@ Thumbs.db
 results/
 
 # Agent prompts (internal use only)
-.agent-prompts/
+.agent-prompts/*
