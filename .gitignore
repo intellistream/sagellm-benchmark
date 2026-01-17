@@ -48,3 +48,6 @@ Thumbs.db
 *.json
 *.log
 results/
+
+# Agent prompts (internal use only)
+.agent-prompts/
