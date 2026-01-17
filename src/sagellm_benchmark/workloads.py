@@ -9,16 +9,16 @@ from typing import Any
 
 class WorkloadType(str, Enum):
     """Workload types for benchmarking."""
-    
+
     SHORT = "short"  # Short prompt + short output
-    LONG = "long"  # Long prompt + medium output  
+    LONG = "long"  # Long prompt + medium output
     STRESS = "stress"  # Concurrent requests, pressure test
 
 
 @dataclass
 class WorkloadConfig:
     """Configuration for a benchmark workload.
-    
+
     Attributes:
         name: Workload identifier.
         workload_type: Type of workload (short/long/stress).
@@ -30,7 +30,7 @@ class WorkloadConfig:
         temperature: Sampling temperature (0.0 = greedy).
         top_p: Nucleus sampling parameter.
     """
-    
+
     name: str
     workload_type: WorkloadType
     prompt: str
@@ -40,7 +40,7 @@ class WorkloadConfig:
     concurrent: bool = False
     temperature: float | None = None  # None = use model default (greedy)
     top_p: float = 1.0
-    
+
     # Additional params
     extra_params: dict[str, Any] = field(default_factory=dict)
 
