@@ -108,6 +108,9 @@ class BenchmarkResult:
     output_text: str = ""
     output_tokens: int = 0
     prompt_tokens: int = 0
+    # 新增：benchmark 层面的延迟记录
+    itl_list: list[float] = field(default_factory=list)  # 逐 token 延迟（ms）
+    e2e_latency_ms: float = 0.0  # 端到端延迟（从发送到完成）
 
 
 @dataclass
@@ -139,13 +142,36 @@ class AggregatedMetrics:
         end_time: 结束时间戳。
     """
 
-    # 延迟指标
+    # TTFT 延迟指标
     avg_ttft_ms: float = 0.0
     p50_ttft_ms: float = 0.0
     p95_ttft_ms: float = 0.0
     p99_ttft_ms: float = 0.0
+    std_ttft_ms: float = 0.0  # 新增：TTFT 标准差
+
+    # TBT 延迟指标
     avg_tbt_ms: float = 0.0
+
+    # TPOT 延迟指标
     avg_tpot_ms: float = 0.0
+    p50_tpot_ms: float = 0.0  # 新增：TPOT percentiles
+    p95_tpot_ms: float = 0.0
+    p99_tpot_ms: float = 0.0
+    std_tpot_ms: float = 0.0
+
+    # 新增：ITL (Inter-Token Latency) percentiles
+    avg_itl_ms: float = 0.0
+    p50_itl_ms: float = 0.0
+    p95_itl_ms: float = 0.0
+    p99_itl_ms: float = 0.0
+    std_itl_ms: float = 0.0
+
+    # 新增：E2E Latency percentiles
+    avg_e2el_ms: float = 0.0
+    p50_e2el_ms: float = 0.0
+    p95_e2el_ms: float = 0.0
+    p99_e2el_ms: float = 0.0
+    std_e2el_ms: float = 0.0
 
     # 吞吐
     avg_throughput_tps: float = 0.0

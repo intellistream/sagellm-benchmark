@@ -224,3 +224,106 @@ async def test_batch_partial_failure() -> None:
     assert failures > 0
     assert successes > 0
     assert successes + failures == len(requests)
+
+
+# ==================== ITL/E2EL Tests ====================
+
+
+@pytest.mark.asyncio
+async def test_mock_itl_generation(sample_request: BenchmarkRequest) -> None:
+    """Test that MockClient generates ITL list and E2E latency."""
+    client = MockClient(ttft_ms=10.0, tbt_ms=5.0, throughput_tps=100.0)
+
+    result = await client.generate(sample_request)
+
+    assert result.success
+    assert result.error is None
+
+    # 验证 itl_list 非空且长度等于 output_tokens
+    assert result.itl_list is not None
+    assert len(result.itl_list) == sample_request.max_tokens
+
+    # 验证 ITL 值在合理范围（tbt_ms ± 20% jitter）
+    for itl in result.itl_list:
+        assert 4.0 <= itl <= 6.0  # 5.0 * 0.8 = 4.0, 5.0 * 1.2 = 6.0
+
+    # 验证 e2e_latency_ms 大于 0
+    assert result.e2e_latency_ms > 0
+
+    # E2E 应该至少包含 TTFT + 总生成时间
+    min_expected_e2e = 10.0 + 5.0 * sample_request.max_tokens * 0.8
+    assert result.e2e_latency_ms >= min_expected_e2e * 0.9  # 允许一些误差
+
+
+@pytest.mark.asyncio
+async def test_mock_full_itl_mode() -> None:
+    """Test MockClient with mock_full_itl=True for realistic simulation."""
+    client = MockClient(ttft_ms=5.0, tbt_ms=2.0, mock_full_itl=True)
+
+    request = BenchmarkRequest(
+        prompt="Test",
+        max_tokens=5,  # 少量 token 以加速测试
+        request_id="full-itl-test",
+    )
+
+    result = await client.generate(request)
+
+    assert result.success
+    assert len(result.itl_list) == 5
+
+    # 在 full_itl 模式下，ITL 应该是实际测量值
+    for itl in result.itl_list:
+        assert itl > 0
+        # 只验证下界（系统调度可能导致上界波动）
+        assert itl >= 1.5  # 至少应该接近 tbt_ms * 0.8
+
+    # 验证平均 ITL 接近 tbt_ms（允许较大波动）
+    avg_itl = sum(result.itl_list) / len(result.itl_list)
+    assert 1.5 <= avg_itl <= 5.0  # 平均值应该接近 2.0ms，允许系统波动
+
+    # E2E latency 应该大于 TTFT + 所有 ITL 的和
+    assert result.e2e_latency_ms > 5.0
+
+
+@pytest.mark.asyncio
+async def test_mock_itl_on_failure() -> None:
+    """Test that failed requests don't have ITL/E2E data."""
+    client = MockClient(error_rate=1.0)  # 100% failure
+
+    request = BenchmarkRequest(
+        prompt="Test",
+        max_tokens=10,
+        request_id="fail-test",
+    )
+
+    result = await client.generate(request)
+
+    assert not result.success
+    # 失败请求的 itl_list 应为默认空列表
+    assert result.itl_list == []
+    # 失败请求的 e2e_latency_ms 应为默认 0.0
+    assert result.e2e_latency_ms == 0.0
+
+
+@pytest.mark.asyncio
+async def test_mock_itl_in_metrics() -> None:
+    """Test that ITL list is also stored in Protocol Metrics."""
+    client = MockClient(ttft_ms=5.0, tbt_ms=2.0)
+
+    request = BenchmarkRequest(
+        prompt="Test",
+        max_tokens=10,
+        request_id="metrics-itl-test",
+    )
+
+    result = await client.generate(request)
+
+    assert result.success
+    assert result.metrics is not None
+
+    # Protocol Metrics 中也应该有 itl_list
+    assert result.metrics.itl_list is not None
+    assert len(result.metrics.itl_list) == 10
+
+    # BenchmarkResult 和 Metrics 中的 itl_list 应该相同
+    assert result.itl_list == result.metrics.itl_list

@@ -219,3 +219,167 @@ def test_contract_year3_all_checks() -> None:
     assert result.passed is True
     assert all(result.checks.values())
     assert "spec_accept_rate" in result.checks
+
+
+# ==================== ITL/E2EL Aggregation Tests ====================
+
+
+def _create_mock_metrics() -> Metrics:
+    """创建 mock Metrics 用于测试。"""
+    return Metrics(
+        ttft_ms=10.0,
+        tbt_ms=2.0,
+        tpot_ms=2.5,
+        throughput_tps=100.0,
+        peak_mem_mb=1024,
+        error_rate=0.0,
+        kv_used_tokens=128,
+        kv_used_bytes=128 * 16,
+        prefix_hit_rate=0.8,
+        evict_count=0,
+        evict_ms=0.0,
+        spec_accept_rate=0.7,
+        timestamps=Timestamps(
+            queued_at=1000.0,
+            scheduled_at=1001.0,
+            executed_at=1002.0,
+            completed_at=1003.0,
+        ),
+    )
+
+
+def test_itl_aggregation() -> None:
+    """测试 ITL 聚合。"""
+    results = [
+        BenchmarkResult(
+            request_id="r1",
+            success=True,
+            error=None,
+            metrics=_create_mock_metrics(),
+            itl_list=[10.0, 12.0, 11.0, 15.0, 13.0],
+            e2e_latency_ms=100.0,
+            output_tokens=5,
+        ),
+        BenchmarkResult(
+            request_id="r2",
+            success=True,
+            error=None,
+            metrics=_create_mock_metrics(),
+            itl_list=[9.0, 11.0, 14.0, 12.0, 10.0],
+            e2e_latency_ms=95.0,
+            output_tokens=5,
+        ),
+    ]
+
+    aggregated = MetricsAggregator.aggregate(results)
+
+    # ITL 应该是 10 个样本的统计（展平后）
+    # 样本：[10.0, 12.0, 11.0, 15.0, 13.0, 9.0, 11.0, 14.0, 12.0, 10.0]
+    assert aggregated.avg_itl_ms > 0
+    assert aggregated.avg_itl_ms == pytest.approx(
+        11.7, rel=0.01
+    )  # (10+12+11+15+13+9+11+14+12+10)/10
+    assert aggregated.p50_itl_ms > 0
+    assert aggregated.p95_itl_ms >= aggregated.p50_itl_ms
+    assert aggregated.p99_itl_ms >= aggregated.p95_itl_ms
+    assert aggregated.std_itl_ms > 0
+
+    # E2EL
+    assert aggregated.avg_e2el_ms == pytest.approx(97.5, rel=0.01)
+    assert aggregated.p50_e2el_ms > 0
+    assert aggregated.p95_e2el_ms >= aggregated.p50_e2el_ms
+    assert aggregated.std_e2el_ms > 0
+
+
+def test_empty_itl_list() -> None:
+    """测试空 ITL 列表不应导致异常。"""
+    results = [
+        BenchmarkResult(
+            request_id="r1",
+            success=True,
+            error=None,
+            metrics=_create_mock_metrics(),
+            itl_list=[],  # 空列表
+            e2e_latency_ms=0.0,
+            output_tokens=0,
+        ),
+    ]
+
+    aggregated = MetricsAggregator.aggregate(results)
+
+    # 空 ITL 应返回 0.0，不抛异常
+    assert aggregated.avg_itl_ms == 0.0
+    assert aggregated.p50_itl_ms == 0.0
+    assert aggregated.p95_itl_ms == 0.0
+    assert aggregated.p99_itl_ms == 0.0
+    assert aggregated.std_itl_ms == 0.0
+
+    # E2EL 也为 0（过滤掉 <= 0 的样本）
+    assert aggregated.avg_e2el_ms == 0.0
+
+
+def test_single_itl_sample_no_std() -> None:
+    """测试单样本时 std 应为 0。"""
+    results = [
+        BenchmarkResult(
+            request_id="r1",
+            success=True,
+            error=None,
+            metrics=_create_mock_metrics(),
+            itl_list=[10.0],  # 单样本
+            e2e_latency_ms=100.0,
+            output_tokens=1,
+        ),
+    ]
+
+    aggregated = MetricsAggregator.aggregate(results)
+
+    # 单样本 std 应为 0.0
+    assert aggregated.avg_itl_ms == 10.0
+    assert aggregated.std_itl_ms == 0.0
+
+    # E2EL 单样本 std 也应为 0.0
+    assert aggregated.avg_e2el_ms == 100.0
+    assert aggregated.std_e2el_ms == 0.0
+
+
+def test_partial_itl_list() -> None:
+    """测试部分请求有 ITL，部分没有。"""
+    results = [
+        BenchmarkResult(
+            request_id="r1",
+            success=True,
+            error=None,
+            metrics=_create_mock_metrics(),
+            itl_list=[10.0, 12.0, 11.0],
+            e2e_latency_ms=100.0,
+            output_tokens=3,
+        ),
+        BenchmarkResult(
+            request_id="r2",
+            success=True,
+            error=None,
+            metrics=_create_mock_metrics(),
+            itl_list=[],  # 空
+            e2e_latency_ms=80.0,
+            output_tokens=0,
+        ),
+        BenchmarkResult(
+            request_id="r3",
+            success=True,
+            error=None,
+            metrics=_create_mock_metrics(),
+            itl_list=[9.0, 11.0],
+            e2e_latency_ms=90.0,
+            output_tokens=2,
+        ),
+    ]
+
+    aggregated = MetricsAggregator.aggregate(results)
+
+    # 只统计非空的 ITL：[10.0, 12.0, 11.0, 9.0, 11.0] = 5 样本
+    assert aggregated.avg_itl_ms == pytest.approx(10.6, rel=0.01)
+    assert aggregated.std_itl_ms > 0
+
+    # E2EL 统计：[100.0, 80.0, 90.0] = 3 样本
+    assert aggregated.avg_e2el_ms == pytest.approx(90.0, rel=0.01)

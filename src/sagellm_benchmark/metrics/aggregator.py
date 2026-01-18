@@ -86,12 +86,44 @@ class MetricsAggregator:
             aggregated.p50_ttft_ms = MetricsAggregator._percentile(ttft_samples, 0.50)
             aggregated.p95_ttft_ms = MetricsAggregator._percentile(ttft_samples, 0.95)
             aggregated.p99_ttft_ms = MetricsAggregator._percentile(ttft_samples, 0.99)
+            if len(ttft_samples) > 1:
+                aggregated.std_ttft_ms = statistics.stdev(ttft_samples)
 
         if tbt_samples:
             aggregated.avg_tbt_ms = statistics.mean(tbt_samples)
 
         if tpot_samples:
             aggregated.avg_tpot_ms = statistics.mean(tpot_samples)
+            aggregated.p50_tpot_ms = MetricsAggregator._percentile(tpot_samples, 0.50)
+            aggregated.p95_tpot_ms = MetricsAggregator._percentile(tpot_samples, 0.95)
+            aggregated.p99_tpot_ms = MetricsAggregator._percentile(tpot_samples, 0.99)
+            if len(tpot_samples) > 1:
+                aggregated.std_tpot_ms = statistics.stdev(tpot_samples)
+
+        # === ITL 指标（展平所有请求的 itl_list）===
+        all_itl: list[float] = []
+        for r in successful:
+            if r.itl_list:
+                all_itl.extend(r.itl_list)
+
+        if all_itl:
+            aggregated.avg_itl_ms = statistics.mean(all_itl)
+            aggregated.p50_itl_ms = MetricsAggregator._percentile(all_itl, 0.50)
+            aggregated.p95_itl_ms = MetricsAggregator._percentile(all_itl, 0.95)
+            aggregated.p99_itl_ms = MetricsAggregator._percentile(all_itl, 0.99)
+            if len(all_itl) > 1:
+                aggregated.std_itl_ms = statistics.stdev(all_itl)
+
+        # === E2E Latency 指标 ===
+        e2el_samples = [r.e2e_latency_ms for r in successful if r.e2e_latency_ms > 0]
+
+        if e2el_samples:
+            aggregated.avg_e2el_ms = statistics.mean(e2el_samples)
+            aggregated.p50_e2el_ms = MetricsAggregator._percentile(e2el_samples, 0.50)
+            aggregated.p95_e2el_ms = MetricsAggregator._percentile(e2el_samples, 0.95)
+            aggregated.p99_e2el_ms = MetricsAggregator._percentile(e2el_samples, 0.99)
+            if len(e2el_samples) > 1:
+                aggregated.std_e2el_ms = statistics.stdev(e2el_samples)
 
         # === 吞吐 ===
         throughput_samples = [

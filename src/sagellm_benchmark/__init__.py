@@ -8,6 +8,14 @@ from sagellm_benchmark.clients import (
     MockClient,
 )
 
+# Traffic - 流量控制
+from sagellm_benchmark.traffic import (
+    ArrivalPattern,
+    RequestGenerator,
+    TrafficController,
+    TrafficProfile,
+)
+
 # Types - 公共数据类型（契约定义）
 from sagellm_benchmark.types import (
     AggregatedMetrics,
@@ -34,4 +42,9 @@ __all__ = [
     # Clients
     "BenchmarkClient",
     "MockClient",
+    # Traffic
+    "ArrivalPattern",
+    "TrafficProfile",
+    "RequestGenerator",
+    "TrafficController",
 ]
