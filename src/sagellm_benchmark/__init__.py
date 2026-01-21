@@ -27,7 +27,7 @@ from sagellm_benchmark.types import (
     WorkloadType,
 )
 
-__version__ = "0.1.0.4"
+__version__ = "0.1.0.5"
 
 __all__ = [
     "__version__",

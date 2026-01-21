@@ -387,4 +387,3 @@ benchmark:
 
 - [README.md](../README.md) - Overview and installation
 - [examples/](../examples/) - Sample output files
-- [task0_8_agent_prompts.md](../../sagellm-docs/docs/internal/task0_8_agent_prompts.md) - Task specification
