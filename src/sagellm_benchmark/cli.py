@@ -17,28 +17,28 @@ console = Console()
 @click.group()
 @click.version_option(version="0.1.0", prog_name="sagellm-benchmark")
 def main() -> None:
-    """sageLLM Benchmark Suite - Year 1 Demo Contract Validation."""
+    """sageLLM Benchmark Suite - M1 Demo Contract Validation."""
     pass
 
 
 @main.command()
 @click.option(
     "--workload",
-    type=click.Choice(["year1", "short", "long", "stress"]),
-    default="year1",
+    type=click.Choice(["m1", "short", "long", "stress"]),
+    default="m1",
     help="Workload type to run.",
 )
 @click.option(
     "--backend",
-    type=click.Choice(["mock", "cpu", "lmdeploy", "vllm"]),
-    default="mock",
+    type=click.Choice(["cpu", "lmdeploy", "vllm"]),
+    default="cpu",
     help="Backend engine to use.",
 )
 @click.option(
     "--model",
     type=str,
-    default=None,
-    help="Model path (for non-mock backends).",
+    default="sshleifer/tiny-gpt2",
+    help="Model path (for CPU backend).",
 )
 @click.option(
     "--output",
@@ -74,16 +74,16 @@ def run(
         sys.exit(1)
 
     # Determine workloads to run
-    from sagellm_benchmark.workloads import YEAR1_WORKLOADS, WorkloadType
+    from sagellm_benchmark.workloads import M1_WORKLOADS, WorkloadType
 
-    if workload == "year1":
-        workloads = YEAR1_WORKLOADS
+    if workload == "m1":
+        workloads = M1_WORKLOADS
     elif workload == "short":
-        workloads = [w for w in YEAR1_WORKLOADS if w.workload_type == WorkloadType.SHORT]
+        workloads = [w for w in M1_WORKLOADS if w.workload_type == WorkloadType.SHORT]
     elif workload == "long":
-        workloads = [w for w in YEAR1_WORKLOADS if w.workload_type == WorkloadType.LONG]
+        workloads = [w for w in M1_WORKLOADS if w.workload_type == WorkloadType.LONG]
     elif workload == "stress":
-        workloads = [w for w in YEAR1_WORKLOADS if w.workload_type == WorkloadType.STRESS]
+        workloads = [w for w in M1_WORKLOADS if w.workload_type == WorkloadType.STRESS]
     else:
         console.print(f"[bold red]Unknown workload:[/bold red] {workload}")
         sys.exit(1)
@@ -91,24 +91,7 @@ def run(
     # Create engine
     engine_factory = get_engine_factory()
 
-    if backend == "mock":
-        from sagellm_backend.engine.mock import MockConfig
-
-        config = MockConfig(
-            model_path="mock-model",
-            device="cpu",
-            mock_ttft_ms=10.0,
-            mock_tbt_ms=5.0,
-            mock_throughput_tps=100.0,
-        )
-        engine = engine_factory.create_engine("mock", config)
-
-    elif backend == "cpu":
-        if model is None:
-            console.print("[bold red]Error:[/bold red] --model required for CPU backend")
-            console.print("Example: --model gpt2")
-            sys.exit(1)
-
+    if backend == "cpu":
         from sagellm_backend.engine.cpu import CPUConfig
 
         config = CPUConfig(
@@ -119,7 +102,7 @@ def run(
 
     else:
         console.print(f"[bold red]Backend not yet implemented:[/bold red] {backend}")
-        console.print("Available: mock, cpu")
+        console.print("Available: cpu")
         sys.exit(1)
 
     # Run benchmark

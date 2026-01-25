@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class BenchmarkClient(ABC):
     """Abstract base class for benchmark clients.
 
-    All backend implementations (Mock, OpenAI, vLLM, LMDeploy, etc.) must
+    All backend implementations (SageLLM, OpenAI, vLLM, LMDeploy, etc.) must
     inherit from this class and implement the abstract methods.
 
     The client is responsible for:

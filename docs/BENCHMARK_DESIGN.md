@@ -12,7 +12,7 @@
 
 ## 2. 设计目标
 1. **Protocol-First**：指标与请求/响应严格对齐 `sagellm_protocol.Metrics` 与 `Request/Response`。
-2. **Mock-First**：CI 无 GPU 也可完整跑通。
+2. **CPU-First**：CI 无 GPU 也可完整跑通。
 3. **可独立扩展**：数据集、Runner、报告三条链路可独立开发。
 4. **Demo Contract 验证**：支持 Year1/2/3 合规性检查。
 
@@ -50,7 +50,7 @@
                          │
                          ▼
 ┌──────────────────────────────────────────────────────────┐
-│    sagellm-backend (engine: mock/cpu/hf-cuda)            │
+│    sagellm-backend (engine: cpu/hf-cuda)                 │
 └──────────────────────────────────────────────────────────┘
                          │
                          ▼
@@ -95,27 +95,27 @@ class BenchmarkMetrics:
     avg_tbt_ms: float = 0.0
     avg_tpot_ms: float = 0.0
     avg_throughput_tps: float = 0.0
-    
+
     # 内存
     peak_mem_mb: int = 0
     avg_mem_mb: float = 0.0
-    
+
     # 错误率
     error_rate: float = 0.0
     total_requests: int = 0
     successful_requests: int = 0
     failed_requests: int = 0
-    
+
     # KV Cache
     kv_used_tokens: int = 0
     kv_used_bytes: int = 0
     prefix_hit_rate: float = 0.0
     evict_count: int = 0
     evict_ms: float = 0.0
-    
+
     # Speculative
     spec_accept_rate: float = 0.0
-    
+
     # 时间
     total_time_s: float = 0.0
     start_time: float = 0.0
@@ -139,14 +139,11 @@ class BenchmarkRunner:
 ## 6. CLI 使用 (✅已实现)
 
 ```bash
-# 运行 Year1 所有 workload (mock 后端)
-sagellm-benchmark run --workload year1 --backend mock
-
-# 运行 Year1 (CPU 后端，需要指定模型)
-sagellm-benchmark run --workload year1 --backend cpu --model gpt2
+# 运行 M1 所有 workload (CPU 后端)
+sagellm-benchmark run --workload m1 --backend cpu --model sshleifer/tiny-gpt2
 
 # 运行单个 workload
-sagellm-benchmark run --workload short --backend mock
+sagellm-benchmark run --workload short --backend cpu
 
 # 查看报告
 sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format table
@@ -192,7 +189,7 @@ sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --fo
 isagellm-benchmark (本仓库)
     │
     ├── isagellm (umbrella，可选)
-    │       └── isagellm-backend (engine: mock/cpu/hf-cuda)
+    │       └── isagellm-backend (engine: cpu/hf-cuda)
     │       └── isagellm-protocol (Metrics, Request, Response)
     │
     └── 直接依赖
@@ -208,5 +205,5 @@ isagellm-benchmark (本仓库)
 
 ## 10. 风险与约束
 - `Metrics` 必须严格对齐 `sagellm_protocol.Metrics` 字段
-- Mock 模式必须可在 CI 运行（无 GPU）
+- CPU 模式必须可在 CI 运行（无 GPU）
 - 不引入 engine 依赖到 datasets/reporters 模块

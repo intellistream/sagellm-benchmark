@@ -31,7 +31,7 @@ src/sagellm_benchmark/datasets/
 
 ## 设计要求
 1. **Protocol-First**：仅使用协议层类型，不定义重复指标。
-2. **Mock-First**：无外部数据时支持随机数据。
+2. **CPU-First**：无外部数据时支持随机数据。
 3. **可扩展**：新增数据集无需修改既有逻辑。
 
 ## 关键数据结构
@@ -105,4 +105,3 @@ class BenchmarkRequest:
 2. `BenchmarkRequest` 的 `model` 和 `stream` 字段有默认值，Dataset 可不填
 3. 生成的 `request_id` 必须全局唯一（建议用 UUID）
 4. `prompt_len` 是期望长度，允许误差 ±10%
-

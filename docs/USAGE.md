@@ -17,7 +17,7 @@ The easiest way is to use the one-click script:
 ```
 
 This will:
-- Run all three Year 1 workloads (short/long/stress)
+- Run all three M1 workloads (short/long/stress)
 - Generate metrics JSON files
 - Create summary report
 - Generate markdown report
@@ -30,20 +30,19 @@ Run benchmark workloads.
 
 **Options:**
 
-- `--workload`: Workload type to run
-  - `year1`: All three workloads (default)
+-- `--workload`: Workload type to run
+  - `m1`: All three workloads (default)
   - `short`: Short input only
   - `long`: Long input only
   - `stress`: Stress test only
 
-- `--backend`: Backend engine to use
-  - `mock`: Mock backend (no GPU, default)
-  - `cpu`: CPU inference with HuggingFace
+-- `--backend`: Backend engine to use
+  - `cpu`: CPU inference with HuggingFace (default)
   - `lmdeploy`: LMDeploy (coming soon)
   - `vllm`: vLLM (coming soon)
 
-- `--model`: Model path (required for non-mock backends)
-  - Example: `gpt2`, `facebook/opt-125m`
+-- `--model`: Model path (for CPU backend)
+  - Example: `sshleifer/tiny-gpt2`, `gpt2`
 
 - `--output`, `-o`: Output directory
   - Default: `./benchmark_results`
@@ -53,14 +52,14 @@ Run benchmark workloads.
 **Examples:**
 
 ```bash
-# Run all workloads with mock backend
-sagellm-benchmark run --workload year1 --backend mock
+# Run all workloads with CPU backend
+sagellm-benchmark run --workload m1 --backend cpu
 
 # Run short input with CPU backend
-sagellm-benchmark run --workload short --backend cpu --model gpt2
+sagellm-benchmark run --workload short --backend cpu --model sshleifer/tiny-gpt2
 
 # Run stress test with verbose output
-sagellm-benchmark run --workload stress --backend mock -v -o ./my_results
+sagellm-benchmark run --workload stress --backend cpu -v -o ./my_results
 ```
 
 ### `sagellm-benchmark report`
@@ -219,25 +218,6 @@ sagellm-benchmark report --format json
 
 ## Backend Selection
 
-### Mock Backend
-
-**When to use:**
-- CI/CD pipelines (no GPU required)
-- Quick validation
-- Testing report generation
-- Developing new features
-
-**Characteristics:**
-- Instant execution
-- Predictable metrics
-- No model loading
-- No hardware requirements
-
-**Example:**
-```bash
-sagellm-benchmark run --workload year1 --backend mock
-```
-
 ### CPU Backend
 
 **When to use:**
@@ -254,7 +234,7 @@ sagellm-benchmark run --workload year1 --backend mock
 
 **Example:**
 ```bash
-sagellm-benchmark run --workload year1 --backend cpu --model gpt2
+sagellm-benchmark run --workload m1 --backend cpu --model sshleifer/tiny-gpt2
 ```
 
 ## Troubleshooting
@@ -266,18 +246,18 @@ Install the package:
 pip install isagellm-benchmark
 ```
 
-### "Error: --model required for CPU backend"
+### "Model path invalid"
 
-CPU backend needs a model path:
+CPU backend needs a valid model path:
 ```bash
-sagellm-benchmark run --backend cpu --model gpt2
+sagellm-benchmark run --backend cpu --model sshleifer/tiny-gpt2
 ```
 
 ### "File not found: benchmark_summary.json"
 
 Run benchmark first:
 ```bash
-sagellm-benchmark run --workload year1 --backend mock
+sagellm-benchmark run --workload m1 --backend cpu
 ```
 
 ### High memory usage with CPU backend
@@ -292,7 +272,6 @@ sagellm-benchmark run --backend cpu --model facebook/opt-125m
 ### Slow execution with CPU backend
 
 This is expected. CPU inference is much slower than GPU. Consider:
-- Using mock backend for quick tests
 - Using smaller models
 - Reducing num_requests in workload config
 
@@ -315,10 +294,10 @@ sagellm-benchmark run -v
 
 ```bash
 # Only short input
-sagellm-benchmark run --workload short --backend mock
+sagellm-benchmark run --workload short --backend cpu
 
 # Only stress test
-sagellm-benchmark run --workload stress --backend cpu --model gpt2
+sagellm-benchmark run --workload stress --backend cpu --model sshleifer/tiny-gpt2
 ```
 
 ### Generating Reports
@@ -354,7 +333,7 @@ jobs:
         run: pip install isagellm-benchmark
 
       - name: Run Benchmark
-        run: sagellm-benchmark run --workload year1 --backend mock
+        run: sagellm-benchmark run --workload m1 --backend cpu
 
       - name: Generate Report
         run: sagellm-benchmark report --format markdown > REPORT.md
@@ -375,7 +354,7 @@ benchmark:
   stage: test
   script:
     - pip install isagellm-benchmark
-    - sagellm-benchmark run --workload year1 --backend mock
+    - sagellm-benchmark run --workload year1 --backend cpu
     - sagellm-benchmark report --format markdown > REPORT.md
   artifacts:
     paths:

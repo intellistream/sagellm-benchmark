@@ -1,6 +1,6 @@
 """随机数据集实现。
 
-生成随机 prompt 用于 Mock 测试，无需外部数据依赖。
+生成随机 prompt 用于离线测试，无需外部数据依赖。
 支持字符级或近似 token 级长度控制。
 """
 
@@ -191,7 +191,7 @@ TOPICS = [
 
 
 class RandomDataset(BenchmarkDataset):
-    """随机数据集，生成随机 prompt 用于 Mock 测试。
+    """随机数据集，生成随机 prompt 用于离线测试。
 
     支持两种长度模式：
     - char: 字符级长度控制（精确）

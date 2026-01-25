@@ -45,7 +45,7 @@ class WorkloadConfig:
     extra_params: dict[str, Any] = field(default_factory=dict)
 
 
-# Predefined workloads matching Year 1 Demo Contract
+# Predefined workloads matching M1 Demo Contract
 YEAR1_WORKLOADS = [
     WorkloadConfig(
         name="short_input",
@@ -73,3 +73,6 @@ YEAR1_WORKLOADS = [
         concurrent=True,
     ),
 ]
+
+# Backward-compatible alias for M1 naming
+M1_WORKLOADS = YEAR1_WORKLOADS

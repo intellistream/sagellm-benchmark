@@ -4,7 +4,7 @@
 - BenchmarkDataset: 数据集抽象基类
 - RandomDataset: 随机数据生成
 - ShareGPTDataset: ShareGPT 真实数据加载
-- MockShareGPTDataset: 模拟 ShareGPT 数据
+- SyntheticShareGPTDataset: 合成 ShareGPT 数据
 - Year Demo Workloads: 预置的 Year1/2/3 Workload 规格
 
 Example:
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from sagellm_benchmark.datasets.base import BenchmarkDataset
 from sagellm_benchmark.datasets.random import RandomDataset
-from sagellm_benchmark.datasets.sharegpt import MockShareGPTDataset, ShareGPTDataset
+from sagellm_benchmark.datasets.sharegpt import ShareGPTDataset, SyntheticShareGPTDataset
 from sagellm_benchmark.datasets.year_demo import (
     YEAR1_LONG,
     YEAR1_SHORT,
@@ -46,7 +46,7 @@ __all__ = [
     # 数据集实现
     "RandomDataset",
     "ShareGPTDataset",
-    "MockShareGPTDataset",
+    "SyntheticShareGPTDataset",
     # Year Demo Workloads
     "YEAR1_WORKLOADS",
     "YEAR1_SHORT",

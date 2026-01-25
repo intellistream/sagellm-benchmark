@@ -6,7 +6,7 @@
 ## 范围
 - Runner 编排（串行/并发）
 - BenchmarkClient 抽象
-- MockClient 实现（用于 CI）
+- SageLLMClient 实现（用于 CI）
 
 ## 非目标
 - 不实现数据集加载
@@ -23,7 +23,7 @@
 src/sagellm_benchmark/clients/
   __init__.py
   base.py
-  mock.py
+  sagellm_client.py
 
 src/sagellm_benchmark/
   runner.py
@@ -63,9 +63,9 @@ class BenchmarkResult:
   - `generate_batch(requests, concurrent: bool) -> list[BenchmarkResult]`
   - `health_check() -> bool`
 
-### 2) clients/mock.py
-- MockClient
-- 可配置 TTFT/TBT/吞吐率
+### 2) clients/sagellm_client.py
+- SageLLMClient
+- 使用 CPU 引擎进行基线测试
 - 输出 `sagellm_protocol.Metrics`
 
 ### 3) runner.py
@@ -84,13 +84,12 @@ class BenchmarkResult:
 - error 统计正确（success=false 时 error 不为空）
 
 ## 交付验收用例
-- 用 MockClient 执行 5 条 request
+- 用 SageLLMClient 执行 5 条 request
 - 返回 Metrics 字段完整
 
 ## 注意事项
 1. **必读**：先阅读 `docs/INTERFACE_CONTRACT.md` 了解完整接口约定
 2. `BenchmarkResult.metrics` 必须是完整的 `sagellm_protocol.Metrics` 对象
-3. MockClient 需要支持可配置的 TTFT/TBT 模拟值
+3. SageLLMClient 需要返回完整 Metrics
 4. 并发执行时，结果顺序必须与输入顺序一致（用 `asyncio.gather` + 索引）
 5. 超时和错误必须捕获，设置 `success=False` 和 `error` 字段
-

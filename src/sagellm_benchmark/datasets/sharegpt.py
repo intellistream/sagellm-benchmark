@@ -253,13 +253,13 @@ class ShareGPTDataset(BenchmarkDataset):
         self._rng = random.Random(seed)
 
 
-class MockShareGPTDataset(BenchmarkDataset):
-    """Mock ShareGPT 数据集，用于无外部数据时的测试。
+class SyntheticShareGPTDataset(BenchmarkDataset):
+    """Synthetic ShareGPT 数据集，用于无外部数据时的测试。
 
     生成模拟 ShareGPT 风格的 prompt（问答形式）。
 
     Example:
-        >>> dataset = MockShareGPTDataset(seed=42)
+        >>> dataset = SyntheticShareGPTDataset(seed=42)
         >>> requests = dataset.sample(spec)
     """
 
@@ -296,7 +296,7 @@ class MockShareGPTDataset(BenchmarkDataset):
     ]
 
     def __init__(self, seed: int | None = None) -> None:
-        """初始化 Mock ShareGPT 数据集。
+        """初始化 Synthetic ShareGPT 数据集。
 
         Args:
             seed: 随机种子。
@@ -306,10 +306,10 @@ class MockShareGPTDataset(BenchmarkDataset):
 
     @property
     def name(self) -> str:
-        return "mock_sharegpt"
+        return "synthetic_sharegpt"
 
     def sample(self, spec: WorkloadSpec) -> list[BenchmarkRequest]:
-        """生成模拟 ShareGPT 风格的请求。
+        """生成 ShareGPT 风格的请求。
 
         Args:
             spec: Workload 规格描述。
@@ -335,7 +335,7 @@ class MockShareGPTDataset(BenchmarkDataset):
         return requests
 
     def _generate_prompt(self, target_chars: int) -> str:
-        """生成模拟问答 prompt。
+        """生成问答 prompt。
 
         Args:
             target_chars: 目标字符数。

@@ -29,7 +29,7 @@ That's it! Results will be in `./benchmark_results/`
 
 ```bash
 # Run all three workloads
-sagellm-benchmark run --workload year1 --backend mock
+sagellm-benchmark run --workload m1 --backend cpu
 
 # View results
 sagellm-benchmark report
@@ -79,17 +79,6 @@ Benchmark Results
 
 ## Backend Options
 
-### Mock Backend (Default)
-
-Fast, predictable, no GPU required. Perfect for:
-- CI/CD pipelines
-- Quick validation
-- Development
-
-```bash
-sagellm-benchmark run --backend mock
-```
-
 ### CPU Backend
 
 Real inference using HuggingFace models. Use for:
@@ -107,10 +96,10 @@ sagellm-benchmark run --backend cpu --model gpt2
 
 ```bash
 # Run specific workload
-sagellm-benchmark run --workload short --backend mock
+sagellm-benchmark run --workload short --backend cpu
 
 # Run with verbose logging
-sagellm-benchmark run --workload year1 --backend mock -v
+sagellm-benchmark run --workload m1 --backend cpu -v
 
 # Custom output directory
 sagellm-benchmark run --output ./my_results
@@ -140,7 +129,7 @@ sagellm-benchmark run --backend cpu --model gpt2
 
 Run benchmark first:
 ```bash
-sagellm-benchmark run --workload year1 --backend mock
+sagellm-benchmark run --workload year1 --backend cpu
 ```
 
 ## Next Steps
@@ -159,7 +148,7 @@ sagellm-benchmark run --workload year1 --backend mock
 ```bash
 # Quick start in 3 commands:
 pip install isagellm-benchmark
-sagellm-benchmark run --workload year1 --backend mock
+sagellm-benchmark run --workload year1 --backend cpu
 sagellm-benchmark report
 ```
 

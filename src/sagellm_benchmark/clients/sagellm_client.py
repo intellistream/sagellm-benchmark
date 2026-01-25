@@ -1,7 +1,7 @@
 """Client for native sagellm-backend engines.
 
 This client directly uses sagellm-backend's Engine classes:
-- CPUEngine (for CPU/mock mode)
+- CPUEngine (for CPU mode)
 - CUDAEngine (for NVIDIA GPUs)
 - AscendEngine (for Huawei Ascend NPUs)
 

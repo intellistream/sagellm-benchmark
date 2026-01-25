@@ -1,7 +1,6 @@
 """Benchmark clients for different backends.
 
 This module provides a unified interface for benchmarking various LLM backends:
-- MockClient: For CI/testing (no real backend needed)
 - OpenAIClient: For OpenAI-compatible APIs (sagellm-gateway)
 - VLLMClient: For vLLM backend
 - LMDeployClient: For LMDeploy backend
@@ -11,11 +10,9 @@ This module provides a unified interface for benchmarking various LLM backends:
 from __future__ import annotations
 
 from sagellm_benchmark.clients.base import BenchmarkClient
-from sagellm_benchmark.clients.mock import MockClient
 
 __all__ = [
     "BenchmarkClient",
-    "MockClient",
 ]
 
 # Optional clients (imported on demand)

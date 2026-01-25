@@ -6,7 +6,6 @@
 
 | 客户端 | 后端类型 | 使用场景 | 依赖包 |
 |--------|---------|---------|--------|
-| **MockClient** | 模拟后端 | CI/测试，无需 GPU | 无 |
 | **OpenAIClient** | OpenAI 兼容 API | sagellm-gateway, OpenAI API | `openai` |
 | **VLLMClient** | vLLM | vLLM 服务器或本地 | `vllm`, `openai` (server) |
 | **LMDeployClient** | LMDeploy | LMDeploy 服务器或本地 | `lmdeploy`, `httpx` (server) |
@@ -22,7 +21,7 @@ class BenchmarkClient(ABC):
     async def generate(self, request: BenchmarkRequest) -> BenchmarkResult:
         """执行单个请求"""
         pass
-    
+
     async def generate_batch(
         self,
         requests: list[BenchmarkRequest],
@@ -31,11 +30,11 @@ class BenchmarkClient(ABC):
     ) -> list[BenchmarkResult]:
         """批量执行请求（支持并发/顺序）"""
         pass
-    
+
     async def health_check(self) -> bool:
         """健康检查"""
         pass
-    
+
     async def close(self) -> None:
         """关闭客户端，清理资源"""
         pass
@@ -43,37 +42,7 @@ class BenchmarkClient(ABC):
 
 ## 使用示例
 
-### 1. MockClient - 测试和 CI
-
-```python
-from sagellm_benchmark.clients import MockClient
-from sagellm_benchmark.types import BenchmarkRequest
-
-# 创建 Mock 客户端
-client = MockClient(
-    ttft_ms=50.0,        # 首 token 延迟
-    tbt_ms=15.0,         # token 间延迟
-    throughput_tps=80.0, # 吞吐量
-    error_rate=0.0,      # 失败率 (0.0-1.0)
-    timeout=60.0,        # 超时
-)
-
-# 执行单个请求
-request = BenchmarkRequest(
-    prompt="What is AI?",
-    max_tokens=100,
-    request_id="test-001",
-)
-
-result = await client.generate(request)
-print(f"Success: {result.success}")
-print(f"TTFT: {result.metrics.ttft_ms}ms")
-print(f"Output: {result.output_text}")
-
-await client.close()
-```
-
-### 2. OpenAIClient - sagellm-gateway 或 OpenAI API
+### 1. OpenAIClient - sagellm-gateway 或 OpenAI API
 
 ```python
 from sagellm_benchmark.clients.openai_client import OpenAIClient
@@ -92,7 +61,7 @@ if await client.health_check():
 await client.close()
 ```
 
-### 3. VLLMClient - vLLM 后端
+### 2. VLLMClient - vLLM 后端
 
 #### 服务器模式（推荐）
 
@@ -122,7 +91,7 @@ result = await client.generate(request)
 await client.close()
 ```
 
-### 4. LMDeployClient - LMDeploy 后端
+### 3. LMDeployClient - LMDeploy 后端
 
 ```python
 from sagellm_benchmark.clients.lmdeploy_client import LMDeployClient
@@ -144,7 +113,7 @@ result = await client.generate(request)
 await client.close()
 ```
 
-### 5. SageLLMClient - 原生 sagellm-backend
+### 4. SageLLMClient - 原生 sagellm-backend
 
 ```python
 from sagellm_backend import CPUEngine, CPUConfig
@@ -238,7 +207,7 @@ if result.success and result.metrics:
 
 - OpenAI/vLLM/LMDeploy 等外部后端可能不提供完整指标（如 KV cache）
 - SageLLMClient 提供最完整的指标（因为是原生后端）
-- MockClient 生成模拟指标用于测试
+- SageLLMClient 提供完整指标用于测试
 
 ## 健康检查
 
@@ -260,13 +229,6 @@ else:
 # 方式 1: async with (推荐)
 async with client:
     result = await client.generate(request)
-
-# 方式 2: 手动 close
-client = MockClient()
-try:
-    result = await client.generate(request)
-finally:
-    await client.close()
 ```
 
 ## 依赖安装
@@ -274,9 +236,6 @@ finally:
 根据使用的客户端安装依赖：
 
 ```bash
-# MockClient（无需额外依赖）
-pip install isagellm-benchmark
-
 # OpenAIClient
 pip install isagellm-benchmark openai
 
@@ -311,11 +270,11 @@ class CustomClient(BenchmarkClient):
     def __init__(self, endpoint: str, timeout: float = 60.0):
         super().__init__(name="custom", timeout=timeout)
         self.endpoint = endpoint
-    
+
     async def generate(self, request: BenchmarkRequest) -> BenchmarkResult:
         # 1. 调用你的后端 API
         response = await your_backend_api(request.prompt, request.max_tokens)
-        
+
         # 2. 创建 Protocol Metrics
         from sagellm_protocol import Metrics
         metrics = Metrics(
@@ -324,7 +283,7 @@ class CustomClient(BenchmarkClient):
             throughput_tps=...,
             # ... 其他指标
         )
-        
+
         # 3. 返回 BenchmarkResult
         return BenchmarkResult(
             request_id=request.request_id,
@@ -334,7 +293,7 @@ class CustomClient(BenchmarkClient):
             output_text=response.text,
             output_tokens=response.num_tokens,
         )
-    
+
     async def health_check(self) -> bool:
         # 实现健康检查
         return await check_backend_health(self.endpoint)
@@ -344,7 +303,6 @@ class CustomClient(BenchmarkClient):
 
 ### Q: 如何选择客户端？
 
-- **开发/测试**：使用 `MockClient`
 - **对接 sagellm-gateway**：使用 `OpenAIClient`
 - **对接 vLLM**：使用 `VLLMClient`
 - **对接 LMDeploy**：使用 `LMDeployClient`

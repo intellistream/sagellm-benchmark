@@ -5,7 +5,6 @@ from __future__ import annotations
 # Clients - Task B 客户端
 from sagellm_benchmark.clients import (
     BenchmarkClient,
-    MockClient,
 )
 
 # Traffic - 流量控制
@@ -41,7 +40,6 @@ __all__ = [
     "ContractVersion",
     # Clients
     "BenchmarkClient",
-    "MockClient",
     # Traffic
     "ArrivalPattern",
     "TrafficProfile",
