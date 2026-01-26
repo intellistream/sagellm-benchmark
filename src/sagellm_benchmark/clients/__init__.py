@@ -1,10 +1,10 @@
 """Benchmark clients for different backends.
 
 This module provides a unified interface for benchmarking various LLM backends:
-- OpenAIClient: For OpenAI-compatible APIs (sagellm-gateway)
+- GatewayClient: For OpenAI-protocol HTTP APIs (sagellm-gateway)
 - VLLMClient: For vLLM backend
 - LMDeployClient: For LMDeploy backend
-- SageLLMClient: For native sagellm-backend engines
+- SageLLMClient: For native sagellm-backend engines (no HTTP)
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ __all__ = [
 
 # Optional clients (imported on demand)
 try:
-    from sagellm_benchmark.clients.openai_client import OpenAIClient  # noqa: F401
+    from sagellm_benchmark.clients.openai_client import GatewayClient  # noqa: F401
 
-    __all__.append("OpenAIClient")
+    __all__.append("GatewayClient")
 except ImportError:
     pass
 

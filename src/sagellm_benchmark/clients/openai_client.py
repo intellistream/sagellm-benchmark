@@ -1,9 +1,15 @@
-"""OpenAI-compatible client for sagellm-gateway.
+"""Gateway client for OpenAI-protocol HTTP APIs.
 
-This client connects to OpenAI-compatible APIs, including:
-- sagellm-gateway (local deployment)
-- OpenAI API (cloud)
-- Other compatible endpoints
+This client connects to any service using OpenAI's API protocol:
+- sagellm-gateway (primary use case - local sageLLM deployment)
+- OpenAI API (cloud - for comparison benchmarks)
+- vLLM OpenAI server
+- LMDeploy OpenAI server
+- Other OpenAI-compatible endpoints
+
+Note: This is NOT OpenAI-specific. It's a generic client for
+OpenAI-protocol APIs. For sageLLM benchmarks, use this to
+connect to sagellm-gateway.
 
 Uses the official openai Python SDK.
 """
@@ -22,8 +28,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class OpenAIClient(BenchmarkClient):
-    """Client for OpenAI-compatible APIs.
+class GatewayClient(BenchmarkClient):
+    """Client for OpenAI-protocol HTTP APIs (sagellm-gateway, etc.).
+
+    This client works with any service implementing OpenAI's API protocol.
+    Primary use case: Connect to sagellm-gateway for benchmarking.
 
     Attributes:
         base_url: API base URL (e.g., http://localhost:8000/v1).
@@ -37,7 +46,7 @@ class OpenAIClient(BenchmarkClient):
         api_key: str = "sagellm-benchmark",
         timeout: float = 60.0,
     ) -> None:
-        """Initialize OpenAI client.
+        """Initialize Gateway client.
 
         Args:
             base_url: API base URL.
@@ -47,7 +56,7 @@ class OpenAIClient(BenchmarkClient):
         Raises:
             ImportError: If openai package not installed.
         """
-        super().__init__(name="openai", timeout=timeout)
+        super().__init__(name="gateway", timeout=timeout)
 
         try:
             from openai import AsyncOpenAI

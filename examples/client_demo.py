@@ -1,10 +1,10 @@
 """Example: Using different benchmark clients.
 
 This example demonstrates how to use various benchmark clients:
-1. OpenAIClient - For OpenAI-compatible APIs (sagellm-gateway)
+1. GatewayClient - For OpenAI-protocol HTTP APIs (sagellm-gateway)
 2. VLLMClient - For vLLM backend
 3. LMDeployClient - For LMDeploy backend
-4. SageLLMClient - For native sagellm-backend engines
+4. SageLLMClient - For native sagellm-backend engines (no HTTP)
 
 Note: This demo requires running services. For unit tests, see tests/ directory.
 """
@@ -24,20 +24,20 @@ logger = logging.getLogger(__name__)
 # For testing without real backend, use pytest fixtures in tests/ directory
 
 
-async def demo_openai_client() -> None:
-    """Demo: OpenAIClient for sagellm-gateway or OpenAI API."""
+async def demo_gateway_client() -> None:
+    """Demo: GatewayClient for sagellm-gateway."""
     logger.info("=" * 60)
-    logger.info("Demo 2: OpenAIClient (requires running gateway)")
+    logger.info("Demo: GatewayClient (requires running sagellm-gateway)")
     logger.info("=" * 60)
 
     try:
-        from sagellm_benchmark.clients.openai_client import OpenAIClient
+        from sagellm_benchmark.clients.openai_client import GatewayClient
     except ImportError:
         logger.error("openai package not installed. Install with: pip install openai")
         return
 
-    # Connect to local gateway
-    client = OpenAIClient(
+    # Connect to local sagellm-gateway
+    client = GatewayClient(
         base_url="http://localhost:8000/v1",
         api_key="benchmark",
         timeout=60.0,
@@ -127,13 +127,13 @@ async def demo_batch_execution() -> None:
     """Demo: Batch execution patterns.
 
     Note: This demo is disabled - requires a running backend service.
-    For batch testing, use OpenAIClient with a running sagellm-gateway.
+    For batch testing, use GatewayClient with a running sagellm-gateway.
     """
     logger.info("=" * 60)
     logger.info("Demo: Batch execution (DISABLED - requires backend)")
     logger.info("=" * 60)
     logger.info("This demo requires a running backend service.")
-    logger.info("Example: Use OpenAIClient with sagellm-gateway")
+    logger.info("Example: Use GatewayClient with sagellm-gateway")
     return
 
     # Disabled code - kept for reference
@@ -182,7 +182,7 @@ async def demo_error_handling() -> None:
     logger.info("Demo: Error Handling (DISABLED - requires backend)")
     logger.info("=" * 60)
     logger.info("This demo requires a running backend service.")
-    logger.info("Example: Use OpenAIClient with error simulation")
+    logger.info("Example: Use GatewayClient with error simulation")
     return
 
     # Disabled code - MockClient was removed
@@ -201,7 +201,7 @@ async def main() -> None:
     logger.info("=" * 60)
     logger.info("")
     logger.info("Available demos (uncomment to run):")
-    logger.info("  - demo_openai_client(): Requires sagellm-gateway")
+    logger.info("  - demo_gateway_client(): Requires sagellm-gateway")
     logger.info("  - demo_vllm_client(): Requires vLLM server")
     logger.info("  - demo_lmdeploy_client(): Requires LMDeploy server")
     logger.info("")
@@ -209,7 +209,7 @@ async def main() -> None:
     logger.info("=" * 60)
 
     # Uncomment if you have services running:
-    # await demo_openai_client()
+    # await demo_gateway_client()
     # await demo_vllm_client()
     # await demo_lmdeploy_client()
 
