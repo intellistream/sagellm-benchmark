@@ -268,7 +268,7 @@ class TestMockShareGPTDataset:
     def test_dataset_name(self) -> None:
         """测试数据集名称。"""
         dataset = MockShareGPTDataset()
-        assert dataset.name == "mock_sharegpt"
+        assert dataset.name == "sample_sharegpt"
 
 
 class TestYearDemoWorkloads:

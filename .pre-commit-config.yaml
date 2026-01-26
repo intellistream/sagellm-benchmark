@@ -26,7 +26,7 @@ repos:
       - id: check-json
       - id: check-toml
       - id: check-added-large-files
-        args: ['--maxkb=500']
+        args: ["--maxkb=500"]
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: mixed-line-ending
@@ -49,10 +49,11 @@ repos:
     hooks:
       - id: forbid-mock
         name: forbid mock usage
-        entry: bash -c 'if grep -nE "\\bmock\\b|mock_|_mock|--mock" "$@"; then echo "Mock usage is forbidden."; exit 1; fi'
+        entry: bash -c 'if grep -nE "\\bmock\\b|mock_|_mock|--mock" "$@"; then echo "Mock usage is forbidden. Use CPU backend for validation."; exit 1; fi'
         language: system
         types: [text]
         pass_filenames: true
+        exclude: ^(\.pre-commit-config\.yaml|\.mypy_cache/|\.ruff_cache/|\.pytest_cache/)
 
   # Python: MyPy type checking (optional for benchmark)
   # Note: Skipped in pre-commit for speed, runs in CI

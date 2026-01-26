@@ -41,14 +41,14 @@ pip install isagellm-benchmark
 CLI examples:
 
 ```bash
-# Run the full suite with the mock backend
-sagellm-benchmark run --workload year1 --backend mock
+# Run the full suite with the CPU backend
+sagellm-benchmark run --workload year1 --backend cpu
 
 # Run with a CPU model
 sagellm-benchmark run --workload year1 --backend cpu --model gpt2
 
 # Run a single workload
-sagellm-benchmark run --workload short --backend mock
+sagellm-benchmark run --workload short --backend cpu
 
 # Generate reports
 sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format markdown
@@ -78,7 +78,6 @@ Metrics include latency, throughput, memory, and error rates. See
 
 ## Backends
 
-- **mock**: Simulated backend for fast local or CI runs
 - **cpu**: CPU inference via HuggingFace Transformers (requires `--model`)
 - **planned**: lmdeploy, vllm
 

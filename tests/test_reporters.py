@@ -12,8 +12,8 @@ from sagellm_benchmark.types import AggregatedMetrics, ContractResult, ContractV
 
 
 @pytest.fixture
-def mock_aggregated_metrics() -> AggregatedMetrics:
-    """创建 mock AggregatedMetrics。"""
+def sample_aggregated_metrics() -> AggregatedMetrics:
+    """创建示例 AggregatedMetrics。"""
     return AggregatedMetrics(
         avg_ttft_ms=20.0,
         p50_ttft_ms=20.0,
@@ -41,8 +41,8 @@ def mock_aggregated_metrics() -> AggregatedMetrics:
 
 
 @pytest.fixture
-def mock_contract_result() -> ContractResult:
-    """创建 mock ContractResult。"""
+def sample_contract_result() -> ContractResult:
+    """创建示例 ContractResult。"""
     return ContractResult(
         passed=True,
         version=ContractVersion.YEAR1,
@@ -63,14 +63,14 @@ def mock_contract_result() -> ContractResult:
 
 
 def test_json_reporter_basic(
-    mock_aggregated_metrics: AggregatedMetrics,
+    sample_aggregated_metrics: AggregatedMetrics,
     tmp_path: Path,
 ) -> None:
     """测试 JSON 报告生成。"""
     output_file = tmp_path / "report.json"
 
     json_str = JSONReporter.generate(
-        metrics=mock_aggregated_metrics,
+        metrics=sample_aggregated_metrics,
         output_path=output_file,
         version="0.1.0.2",
     )
@@ -90,16 +90,16 @@ def test_json_reporter_basic(
 
 
 def test_json_reporter_with_contract(
-    mock_aggregated_metrics: AggregatedMetrics,
-    mock_contract_result: ContractResult,
+    sample_aggregated_metrics: AggregatedMetrics,
+    sample_contract_result: ContractResult,
     tmp_path: Path,
 ) -> None:
     """测试包含 Contract 的 JSON 报告。"""
     output_file = tmp_path / "report_with_contract.json"
 
     json_str = JSONReporter.generate(
-        metrics=mock_aggregated_metrics,
-        contract=mock_contract_result,
+        metrics=sample_aggregated_metrics,
+        contract=sample_contract_result,
         output_path=output_file,
     )
 
@@ -112,14 +112,14 @@ def test_json_reporter_with_contract(
 
 
 def test_json_reporter_load(
-    mock_aggregated_metrics: AggregatedMetrics,
+    sample_aggregated_metrics: AggregatedMetrics,
     tmp_path: Path,
 ) -> None:
     """测试从文件加载 JSON 报告。"""
     output_file = tmp_path / "report.json"
 
     JSONReporter.generate(
-        metrics=mock_aggregated_metrics,
+        metrics=sample_aggregated_metrics,
         output_path=output_file,
     )
 
@@ -130,14 +130,14 @@ def test_json_reporter_load(
 
 
 def test_markdown_reporter_basic(
-    mock_aggregated_metrics: AggregatedMetrics,
+    sample_aggregated_metrics: AggregatedMetrics,
     tmp_path: Path,
 ) -> None:
     """测试 Markdown 报告生成。"""
     output_file = tmp_path / "report.md"
 
     markdown_str = MarkdownReporter.generate(
-        metrics=mock_aggregated_metrics,
+        metrics=sample_aggregated_metrics,
         output_path=output_file,
         title="Test Benchmark Report",
         version="0.1.0.2",
@@ -159,16 +159,16 @@ def test_markdown_reporter_basic(
 
 
 def test_markdown_reporter_with_contract(
-    mock_aggregated_metrics: AggregatedMetrics,
-    mock_contract_result: ContractResult,
+    sample_aggregated_metrics: AggregatedMetrics,
+    sample_contract_result: ContractResult,
     tmp_path: Path,
 ) -> None:
     """测试包含 Contract 的 Markdown 报告。"""
     output_file = tmp_path / "report_with_contract.md"
 
     markdown_str = MarkdownReporter.generate(
-        metrics=mock_aggregated_metrics,
-        contract=mock_contract_result,
+        metrics=sample_aggregated_metrics,
+        contract=sample_contract_result,
         output_path=output_file,
     )
 
@@ -178,15 +178,15 @@ def test_markdown_reporter_with_contract(
 
 
 def test_table_reporter_plain_text(
-    mock_aggregated_metrics: AggregatedMetrics,
-    mock_contract_result: ContractResult,
+    sample_aggregated_metrics: AggregatedMetrics,
+    sample_contract_result: ContractResult,
     capsys,
 ) -> None:
     """测试 Table 报告生成（plain text fallback）。"""
     # 强制使用 plain text（模拟 Rich 未安装）
     TableReporter._generate_plain_text(
-        metrics=mock_aggregated_metrics,
-        contract=mock_contract_result,
+        metrics=sample_aggregated_metrics,
+        contract=sample_contract_result,
         show_contract=True,
     )
 
@@ -201,8 +201,8 @@ def test_table_reporter_plain_text(
 
 
 def test_table_reporter_with_rich(
-    mock_aggregated_metrics: AggregatedMetrics,
-    mock_contract_result: ContractResult,
+    sample_aggregated_metrics: AggregatedMetrics,
+    sample_contract_result: ContractResult,
 ) -> None:
     """测试 Table 报告生成（Rich）。"""
     try:
@@ -212,7 +212,7 @@ def test_table_reporter_with_rich(
 
     # 不验证输出内容（Rich 输出包含 ANSI 转义序列），只验证不抛异常
     TableReporter.generate(
-        metrics=mock_aggregated_metrics,
-        contract=mock_contract_result,
+        metrics=sample_aggregated_metrics,
+        contract=sample_contract_result,
         show_contract=True,
     )

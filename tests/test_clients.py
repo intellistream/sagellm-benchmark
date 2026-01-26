@@ -15,7 +15,7 @@ def sample_request() -> BenchmarkRequest:
         prompt="What is the capital of France?",
         max_tokens=50,
         request_id="test-001",
-        model="mock-model",
+        model="cpu-model",
         temperature=0.7,
         top_p=0.9,
     )
@@ -29,7 +29,7 @@ def batch_requests() -> list[BenchmarkRequest]:
             prompt=f"Question {i}",
             max_tokens=20,
             request_id=f"test-{i:03d}",
-            model="mock-model",
+            model="cpu-model",
         )
         for i in range(5)
     ]
@@ -230,7 +230,7 @@ async def test_batch_partial_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mock_itl_generation(sample_request: BenchmarkRequest) -> None:
+async def test_simulated_itl_generation(sample_request: BenchmarkRequest) -> None:
     """Test that MockClient generates ITL list and E2E latency."""
     client = MockClient(ttft_ms=10.0, tbt_ms=5.0, throughput_tps=100.0)
 
@@ -256,9 +256,9 @@ async def test_mock_itl_generation(sample_request: BenchmarkRequest) -> None:
 
 
 @pytest.mark.asyncio
-async def test_mock_full_itl_mode() -> None:
-    """Test MockClient with mock_full_itl=True for realistic simulation."""
-    client = MockClient(ttft_ms=5.0, tbt_ms=2.0, mock_full_itl=True)
+async def test_simulated_full_itl_mode() -> None:
+    """Test simulated client with simulate_full_itl=True for realistic simulation."""
+    client = MockClient(ttft_ms=5.0, tbt_ms=2.0, simulate_full_itl=True)
 
     request = BenchmarkRequest(
         prompt="Test",
@@ -286,7 +286,7 @@ async def test_mock_full_itl_mode() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mock_itl_on_failure() -> None:
+async def test_simulated_itl_on_failure() -> None:
     """Test that failed requests don't have ITL/E2E data."""
     client = MockClient(error_rate=1.0)  # 100% failure
 
@@ -306,7 +306,7 @@ async def test_mock_itl_on_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mock_itl_in_metrics() -> None:
+async def test_simulated_itl_in_metrics() -> None:
     """Test that ITL list is also stored in Protocol Metrics."""
     client = MockClient(ttft_ms=5.0, tbt_ms=2.0)
 

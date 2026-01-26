@@ -50,6 +50,15 @@ else
     echo -e "${GREEN}✓ No conflict markers${NC}"
 fi
 
+# Check for mock usage (CPU-first policy)
+echo -e "${YELLOW}Checking for mock usage...${NC}"
+if git diff --cached | grep -nE '^\+.*\bmock\b|^\+.*mock_|^\+.*_mock|^\+.*--mock' >/dev/null; then
+    echo -e "${RED}✗ Mock usage is forbidden. Use CPU backend for validation.${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✓ No mock usage${NC}"
+fi
+
 # Check for large files (>5MB)
 echo -e "${YELLOW}Checking for large files...${NC}"
 max_size=5242880

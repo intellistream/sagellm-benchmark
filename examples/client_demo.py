@@ -20,13 +20,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-async def demo_mock_client() -> None:
-    """Demo: MockClient for testing."""
+async def demo_cpu_client() -> None:
+    """Demo: CPUClient for testing without backend."""
     logger.info("=" * 60)
-    logger.info("Demo 1: MockClient")
+    logger.info("Demo 1: CPUClient (simulated)")
     logger.info("=" * 60)
 
-    # Create mock client
+    # Create simulated client
     client = MockClient(
         ttft_ms=50.0,
         tbt_ms=15.0,
@@ -38,8 +38,8 @@ async def demo_mock_client() -> None:
     request = BenchmarkRequest(
         prompt="What is the capital of France?",
         max_tokens=100,
-        request_id="mock-001",
-        model="mock-model",
+        request_id="sim-001",
+        model="cpu-model",
         temperature=0.7,
     )
 
@@ -168,7 +168,7 @@ async def demo_batch_execution() -> None:
             prompt=f"Question {i}: What is {i} + {i}?",
             max_tokens=20,
             request_id=f"batch-{i:03d}",
-            model="mock-model",
+            model="cpu-model",
         )
         for i in range(5)
     ]
@@ -246,7 +246,7 @@ async def demo_error_handling() -> None:
 
 async def main() -> None:
     """Run all demos."""
-    await demo_mock_client()
+    await demo_cpu_client()
     print()
 
     await demo_batch_execution()

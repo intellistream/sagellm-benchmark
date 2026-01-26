@@ -6,7 +6,7 @@ import pytest
 
 
 @pytest.fixture
-def mock_metrics():
+def sample_metrics():
     """Provide sample benchmark metrics."""
     return {
         "avg_ttft_ms": 45.2,

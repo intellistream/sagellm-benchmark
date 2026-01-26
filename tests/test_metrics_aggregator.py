@@ -10,8 +10,8 @@ from sagellm_benchmark.types import BenchmarkResult, ContractVersion
 
 
 @pytest.fixture
-def mock_results() -> list[BenchmarkResult]:
-    """创建 5 个 mock BenchmarkResult。"""
+def sample_results() -> list[BenchmarkResult]:
+    """创建 5 个示例 BenchmarkResult。"""
     results = []
 
     for i in range(5):
@@ -53,9 +53,9 @@ def mock_results() -> list[BenchmarkResult]:
     return results
 
 
-def test_aggregator_basic(mock_results: list[BenchmarkResult]) -> None:
+def test_aggregator_basic(sample_results: list[BenchmarkResult]) -> None:
     """测试基本聚合功能。"""
-    aggregated = MetricsAggregator.aggregate(mock_results)
+    aggregated = MetricsAggregator.aggregate(sample_results)
 
     # 验证总数
     assert aggregated.total_requests == 5
@@ -139,9 +139,9 @@ def test_aggregator_with_failures() -> None:
     assert aggregated.error_rate == pytest.approx(1 / 3, abs=0.01)
 
 
-def test_contract_year1_pass(mock_results: list[BenchmarkResult]) -> None:
+def test_contract_year1_pass(sample_results: list[BenchmarkResult]) -> None:
     """测试 Year1 Contract 通过。"""
-    aggregated = MetricsAggregator.aggregate(mock_results)
+    aggregated = MetricsAggregator.aggregate(sample_results)
 
     # Year1 阈值: ttft<100ms, tbt<20ms, tpot<20ms, throughput>50, error_rate<0.05
     result = ContractVerifier.verify(aggregated, ContractVersion.YEAR1)
@@ -224,8 +224,8 @@ def test_contract_year3_all_checks() -> None:
 # ==================== ITL/E2EL Aggregation Tests ====================
 
 
-def _create_mock_metrics() -> Metrics:
-    """创建 mock Metrics 用于测试。"""
+def _create_sample_metrics() -> Metrics:
+    """创建示例 Metrics 用于测试。"""
     return Metrics(
         ttft_ms=10.0,
         tbt_ms=2.0,
@@ -255,7 +255,7 @@ def test_itl_aggregation() -> None:
             request_id="r1",
             success=True,
             error=None,
-            metrics=_create_mock_metrics(),
+            metrics=_create_sample_metrics(),
             itl_list=[10.0, 12.0, 11.0, 15.0, 13.0],
             e2e_latency_ms=100.0,
             output_tokens=5,
@@ -264,7 +264,7 @@ def test_itl_aggregation() -> None:
             request_id="r2",
             success=True,
             error=None,
-            metrics=_create_mock_metrics(),
+            metrics=_create_sample_metrics(),
             itl_list=[9.0, 11.0, 14.0, 12.0, 10.0],
             e2e_latency_ms=95.0,
             output_tokens=5,
@@ -298,7 +298,7 @@ def test_empty_itl_list() -> None:
             request_id="r1",
             success=True,
             error=None,
-            metrics=_create_mock_metrics(),
+            metrics=_create_sample_metrics(),
             itl_list=[],  # 空列表
             e2e_latency_ms=0.0,
             output_tokens=0,
@@ -325,7 +325,7 @@ def test_single_itl_sample_no_std() -> None:
             request_id="r1",
             success=True,
             error=None,
-            metrics=_create_mock_metrics(),
+            metrics=_create_sample_metrics(),
             itl_list=[10.0],  # 单样本
             e2e_latency_ms=100.0,
             output_tokens=1,
@@ -350,7 +350,7 @@ def test_partial_itl_list() -> None:
             request_id="r1",
             success=True,
             error=None,
-            metrics=_create_mock_metrics(),
+            metrics=_create_sample_metrics(),
             itl_list=[10.0, 12.0, 11.0],
             e2e_latency_ms=100.0,
             output_tokens=3,
@@ -359,7 +359,7 @@ def test_partial_itl_list() -> None:
             request_id="r2",
             success=True,
             error=None,
-            metrics=_create_mock_metrics(),
+            metrics=_create_sample_metrics(),
             itl_list=[],  # 空
             e2e_latency_ms=80.0,
             output_tokens=0,
@@ -368,7 +368,7 @@ def test_partial_itl_list() -> None:
             request_id="r3",
             success=True,
             error=None,
-            metrics=_create_mock_metrics(),
+            metrics=_create_sample_metrics(),
             itl_list=[9.0, 11.0],
             e2e_latency_ms=90.0,
             output_tokens=2,

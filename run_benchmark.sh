@@ -20,9 +20,9 @@ if ! command -v sagellm-benchmark &> /dev/null; then
     exit 1
 fi
 
-# Run benchmark with mock backend (no GPU required)
-echo "[1/4] Running Year 1 workloads with mock backend..."
-sagellm-benchmark run --workload year1 --backend mock --output "$OUTPUT_DIR" -v
+# Run benchmark with CPU backend (no GPU required)
+echo "[1/4] Running Year 1 workloads with CPU backend..."
+sagellm-benchmark run --workload year1 --backend cpu --output "$OUTPUT_DIR" -v
 
 echo ""
 echo "[2/4] Generating summary report..."

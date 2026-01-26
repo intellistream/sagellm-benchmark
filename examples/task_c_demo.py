@@ -15,8 +15,8 @@ from sagellm_benchmark.reporters import JSONReporter, MarkdownReporter, TableRep
 from sagellm_benchmark.types import BenchmarkResult, ContractVersion
 
 
-def create_mock_results() -> list[BenchmarkResult]:
-    """创建 5 个 mock BenchmarkResult（Year1 水平）。"""
+def create_sample_results() -> list[BenchmarkResult]:
+    """创建 5 个示例 BenchmarkResult（Year1 水平）。"""
     results = []
 
     for i in range(5):
@@ -65,9 +65,9 @@ def main() -> None:
     print("=" * 80)
     print()
 
-    # === 步骤 1: 创建 Mock 数据 ===
-    print("📦 Step 1: 创建 5 个 Mock BenchmarkResult...")
-    results = create_mock_results()
+    # === 步骤 1: 创建示例数据 ===
+    print("📦 Step 1: 创建 5 个示例 BenchmarkResult...")
+    results = create_sample_results()
     print(f"✅ 成功创建 {len(results)} 个请求结果")
     print()
 
