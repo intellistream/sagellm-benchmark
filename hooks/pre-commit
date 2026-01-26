@@ -1,8 +1,8 @@
-#!/bin/bash
-# Pre-commit hook for sageVDB
-# Runs basic code quality checks before allowing commits
+#!/usr/bin/env bash
+# Pre-commit hook for sageLLM
+# Runs lightweight checks before allowing commits
 
-set -e
+set -euo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -15,6 +15,23 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${CYAN}🔍 Running pre-commit checks...${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
+staged_files=$(git diff --cached --name-only --diff-filter=ACM || true)
+if [ -z "$staged_files" ]; then
+    echo -e "${GREEN}✓ No staged changes to check${NC}"
+    exit 0
+fi
+
+get_file_size() {
+    local file="$1"
+    if stat -c%s "$file" >/dev/null 2>&1; then
+        stat -c%s "$file"
+    elif stat -f%z "$file" >/dev/null 2>&1; then
+        stat -f%z "$file"
+    else
+        echo 0
+    fi
+}
+
 # Check for trailing whitespace
 echo -e "${YELLOW}Checking for trailing whitespace...${NC}"
 if git diff --cached --check --diff-filter=ACM; then
@@ -24,21 +41,31 @@ else
     exit 1
 fi
 
+# Check for merge conflict markers
+echo -e "${YELLOW}Checking for merge conflict markers...${NC}"
+if git diff --cached | grep -nE '^\+<<<<<<<|^\+======|^\+>>>>>>>' >/dev/null; then
+    echo -e "${RED}✗ Merge conflict markers found in staged changes${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✓ No conflict markers${NC}"
+fi
+
 # Check for large files (>5MB)
 echo -e "${YELLOW}Checking for large files...${NC}"
-max_size=5242880  # 5MB in bytes
-large_files=$(git diff --cached --name-only | while read file; do
+max_size=5242880
+large_files=()
+while read -r file; do
     if [ -f "$file" ]; then
-        size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo 0)
+        size=$(get_file_size "$file")
         if [ "$size" -gt "$max_size" ]; then
-            echo "$file ($((size/1024/1024))MB)"
+            large_files+=("$file ($((size / 1024 / 1024))MB)")
         fi
     fi
-done)
+done <<< "$staged_files"
 
-if [ -n "$large_files" ]; then
+if [ ${#large_files[@]} -gt 0 ]; then
     echo -e "${RED}✗ Large files detected (>5MB):${NC}"
-    echo "$large_files"
+    printf '%s\n' "${large_files[@]}"
     echo -e "${YELLOW}Consider using Git LFS or excluding these files.${NC}"
     exit 1
 else
@@ -47,19 +74,22 @@ fi
 
 # Check for common debug statements in Python files
 echo -e "${YELLOW}Checking for debug statements...${NC}"
-debug_found=false
-git diff --cached --name-only --diff-filter=ACM | grep '\.py$' | while read file; do
-    if git diff --cached "$file" | grep -E '^\+.*\b(print|pdb\.set_trace|breakpoint)\(' > /dev/null; then
-        if [ "$debug_found" = false ]; then
-            echo -e "${YELLOW}⚠  Warning: Debug statements found in:${NC}"
-            debug_found=true
+debug_files=()
+while read -r file; do
+    if [[ "$file" == *.py ]]; then
+        if git diff --cached "$file" | grep -E '^\+.*\b(print|pdb\.set_trace|breakpoint)\(' >/dev/null; then
+            debug_files+=("$file")
         fi
-        echo "  - $file"
     fi
-done
+done <<< "$staged_files"
+
+if [ ${#debug_files[@]} -gt 0 ]; then
+    echo -e "${YELLOW}⚠  Warning: Debug statements found in:${NC}"
+    printf '  - %s\n' "${debug_files[@]}"
+else
+    echo -e "${GREEN}✓ No debug statements${NC}"
+fi
 
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}✓ Pre-commit checks passed!${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-exit 0
