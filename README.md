@@ -83,8 +83,10 @@ Metrics include latency, throughput, memory, and error rates. See
 
 ## Documentation
 
-- [QUICKSTART.md](QUICKSTART.md)
-- [docs/USAGE.md](docs/USAGE.md)
+- [QUICKSTART.md](QUICKSTART.md) - 5 分钟快速开始
+- [docs/USAGE.md](docs/USAGE.md) - 详细使用指南
+- [docs/CLIENTS_GUIDE.md](docs/CLIENTS_GUIDE.md) - 客户端选择指南
+- [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md) - 部署架构说明（HTTP API vs 直连）
 
 ## Development
 
