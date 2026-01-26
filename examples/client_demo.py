@@ -1,11 +1,12 @@
 """Example: Using different benchmark clients.
 
 This example demonstrates how to use various benchmark clients:
-1. MockClient - For testing without real backend
-2. OpenAIClient - For OpenAI-compatible APIs (sagellm-gateway)
-3. VLLMClient - For vLLM backend
-4. LMDeployClient - For LMDeploy backend
-5. SageLLMClient - For native sagellm-backend engines
+1. OpenAIClient - For OpenAI-compatible APIs (sagellm-gateway)
+2. VLLMClient - For vLLM backend
+3. LMDeployClient - For LMDeploy backend
+4. SageLLMClient - For native sagellm-backend engines
+
+Note: This demo requires running services. For unit tests, see tests/ directory.
 """
 
 from __future__ import annotations
@@ -13,46 +14,14 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from sagellm_benchmark.clients import MockClient
 from sagellm_benchmark.types import BenchmarkRequest
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-async def demo_cpu_client() -> None:
-    """Demo: CPUClient for testing without backend."""
-    logger.info("=" * 60)
-    logger.info("Demo 1: CPUClient (simulated)")
-    logger.info("=" * 60)
-
-    # Create simulated client
-    client = MockClient(
-        ttft_ms=50.0,
-        tbt_ms=15.0,
-        throughput_tps=80.0,
-        timeout=60.0,
-    )
-
-    # Single request
-    request = BenchmarkRequest(
-        prompt="What is the capital of France?",
-        max_tokens=100,
-        request_id="sim-001",
-        model="cpu-model",
-        temperature=0.7,
-    )
-
-    result = await client.generate(request)
-
-    logger.info(f"Success: {result.success}")
-    logger.info(f"Output: {result.output_text[:100]}")
-    logger.info(f"TTFT: {result.metrics.ttft_ms}ms" if result.metrics else "No metrics")
-    logger.info(
-        f"Throughput: {result.metrics.throughput_tps}tps" if result.metrics else "No metrics"
-    )
-
-    await client.close()
+# Note: CPU client demo removed - MockClient was removed in CPU-first refactor
+# For testing without real backend, use pytest fixtures in tests/ directory
 
 
 async def demo_openai_client() -> None:
@@ -155,23 +124,29 @@ async def demo_vllm_client() -> None:
 
 
 async def demo_batch_execution() -> None:
-    """Demo: Batch execution with concurrent mode."""
-    logger.info("=" * 60)
-    logger.info("Demo 4: Batch Execution (concurrent vs sequential)")
-    logger.info("=" * 60)
+    """Demo: Batch execution patterns.
 
-    client = MockClient(ttft_ms=30.0, tbt_ms=10.0)
+    Note: This demo is disabled - requires a running backend service.
+    For batch testing, use OpenAIClient with a running sagellm-gateway.
+    """
+    logger.info("=" * 60)
+    logger.info("Demo: Batch execution (DISABLED - requires backend)")
+    logger.info("=" * 60)
+    logger.info("This demo requires a running backend service.")
+    logger.info("Example: Use OpenAIClient with sagellm-gateway")
+    return
 
-    # Create batch
-    requests = [
-        BenchmarkRequest(
-            prompt=f"Question {i}: What is {i} + {i}?",
-            max_tokens=20,
-            request_id=f"batch-{i:03d}",
-            model="cpu-model",
-        )
-        for i in range(5)
-    ]
+    # Disabled code - kept for reference
+    # client = some_real_client()
+    # requests = [
+    #     BenchmarkRequest(
+    #         prompt=f"Question {i}: What is {i} + {i}?",
+    #         max_tokens=20,
+    #         request_id=f"batch-{i:03d}",
+    #         model="cpu-model",
+    #     )
+    #     for i in range(5)
+    # ]
 
     # Sequential execution
     logger.info("Running SEQUENTIAL batch...")
@@ -199,69 +174,44 @@ async def demo_batch_execution() -> None:
 
 
 async def demo_error_handling() -> None:
-    """Demo: Error handling and timeout."""
+    """Demo: Error handling and timeout.
+
+    Note: This demo is disabled - requires a running backend service.
+    """
     logger.info("=" * 60)
-    logger.info("Demo 5: Error Handling & Timeout")
+    logger.info("Demo: Error Handling (DISABLED - requires backend)")
     logger.info("=" * 60)
+    logger.info("This demo requires a running backend service.")
+    logger.info("Example: Use OpenAIClient with error simulation")
+    return
 
-    # Test error simulation
-    error_client = MockClient(error_rate=0.5)  # 50% failure rate
-
-    requests = [
-        BenchmarkRequest(
-            prompt=f"Request {i}",
-            max_tokens=10,
-            request_id=f"error-{i:03d}",
-        )
-        for i in range(10)
-    ]
-
-    results = await error_client.generate_batch(requests, concurrent=True)
-
-    successes = sum(1 for r in results if r.success)
-    failures = sum(1 for r in results if not r.success)
-
-    logger.info(f"Total: {len(results)}, Success: {successes}, Failures: {failures}")
-    logger.info(f"Error rate: {failures / len(results) * 100:.1f}%")
-
-    # Test timeout
-    logger.info("\nTesting timeout...")
-    timeout_client = MockClient(ttft_ms=5000.0, timeout=1.0)  # 5s TTFT, 1s timeout
-
-    request = BenchmarkRequest(
-        prompt="Long request",
-        max_tokens=100,
-        request_id="timeout-001",
-    )
-
-    result = await timeout_client.generate(request)
-
-    assert not result.success
-    assert "Timeout" in result.error
-    logger.info(f"✓ Timeout correctly handled: {result.error}")
-
-    await error_client.close()
-    await timeout_client.close()
+    # Disabled code - MockClient was removed
+    # error_client = some_real_client()
+    # Test error rates and timeouts with real backend
 
 
 async def main() -> None:
-    """Run all demos."""
-    await demo_cpu_client()
-    print()
+    """Run all demos.
 
-    await demo_batch_execution()
-    print()
+    Note: Most demos require running backend services.
+    Uncomment the demos below if you have services running.
+    """
+    logger.info("=" * 60)
+    logger.info("Client Demo - Requires Running Services")
+    logger.info("=" * 60)
+    logger.info("")
+    logger.info("Available demos (uncomment to run):")
+    logger.info("  - demo_openai_client(): Requires sagellm-gateway")
+    logger.info("  - demo_vllm_client(): Requires vLLM server")
+    logger.info("  - demo_lmdeploy_client(): Requires LMDeploy server")
+    logger.info("")
+    logger.info("For unit testing without services, see tests/ directory")
+    logger.info("=" * 60)
 
-    await demo_error_handling()
-    print()
-
-    # Optional: uncomment if you have services running
+    # Uncomment if you have services running:
     # await demo_openai_client()
     # await demo_vllm_client()
-
-    logger.info("=" * 60)
-    logger.info("All demos completed!")
-    logger.info("=" * 60)
+    # await demo_lmdeploy_client()
 
 
 if __name__ == "__main__":

@@ -16,8 +16,8 @@ import pytest
 from sagellm_benchmark.datasets import (
     YEAR1_WORKLOADS,
     BenchmarkDataset,
-    MockShareGPTDataset,
     RandomDataset,
+    SyntheticShareGPTDataset,
     create_custom_workload,
     get_workload_by_type,
     get_workloads_by_year,
@@ -244,12 +244,12 @@ class TestRandomDataset:
             assert r1.prompt == r2.prompt
 
 
-class TestMockShareGPTDataset:
-    """MockShareGPTDataset 测试。"""
+class TestSyntheticShareGPTDataset:
+    """SyntheticShareGPTDataset 测试。"""
 
     def test_sample_basic(self) -> None:
         """测试基础采样。"""
-        dataset = MockShareGPTDataset(seed=42)
+        dataset = SyntheticShareGPTDataset(seed=42)
         spec = WorkloadSpec(
             name="test",
             workload_type=WorkloadType.SHORT,
@@ -267,8 +267,8 @@ class TestMockShareGPTDataset:
 
     def test_dataset_name(self) -> None:
         """测试数据集名称。"""
-        dataset = MockShareGPTDataset()
-        assert dataset.name == "sample_sharegpt"
+        dataset = SyntheticShareGPTDataset()
+        assert dataset.name == "synthetic_sharegpt"
 
 
 class TestYearDemoWorkloads:
@@ -429,7 +429,7 @@ class TestIntegration:
         """测试 BenchmarkDataset 接口一致性。"""
         datasets: list[BenchmarkDataset] = [
             RandomDataset(seed=42),
-            MockShareGPTDataset(seed=42),
+            SyntheticShareGPTDataset(seed=42),
         ]
 
         spec = WorkloadSpec(

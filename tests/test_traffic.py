@@ -6,8 +6,8 @@
 from __future__ import annotations
 
 import pytest
+from test_helpers import StubClient
 
-from sagellm_benchmark.clients.mock import MockClient
 from sagellm_benchmark.traffic import (
     ArrivalPattern,
     RequestGenerator,
@@ -251,7 +251,7 @@ async def test_request_generator_reproducibility():
 @pytest.mark.asyncio
 async def test_traffic_controller_instant_mode():
     """测试 TrafficController INSTANT 模式."""
-    client = MockClient(ttft_ms=10.0, tbt_ms=5.0)
+    client = StubClient(ttft_ms=10.0, tbt_ms=5.0)
     profile = TrafficProfile(pattern=ArrivalPattern.INSTANT)
     controller = TrafficController(client, profile)
 
@@ -265,7 +265,7 @@ async def test_traffic_controller_instant_mode():
 @pytest.mark.asyncio
 async def test_traffic_controller_fixed_mode():
     """测试 TrafficController FIXED 模式."""
-    client = MockClient(ttft_ms=10.0, tbt_ms=5.0)
+    client = StubClient(ttft_ms=10.0, tbt_ms=5.0)
     profile = TrafficProfile(
         pattern=ArrivalPattern.FIXED,
         request_rate=100.0,  # 100 QPS → 0.01s 间隔（快速测试）
@@ -282,7 +282,7 @@ async def test_traffic_controller_fixed_mode():
 @pytest.mark.asyncio
 async def test_traffic_controller_warmup():
     """测试 TrafficController warmup 机制."""
-    client = MockClient(ttft_ms=10.0, tbt_ms=5.0)
+    client = StubClient(ttft_ms=10.0, tbt_ms=5.0)
     profile = TrafficProfile(
         pattern=ArrivalPattern.INSTANT,
         warmup_requests=3,
@@ -304,7 +304,7 @@ async def test_traffic_controller_warmup():
 @pytest.mark.asyncio
 async def test_traffic_controller_warmup_exceeds_requests():
     """测试 warmup 数量超过请求总数."""
-    client = MockClient(ttft_ms=10.0, tbt_ms=5.0)
+    client = StubClient(ttft_ms=10.0, tbt_ms=5.0)
     profile = TrafficProfile(
         pattern=ArrivalPattern.INSTANT,
         warmup_requests=10,  # warmup 10 个
@@ -321,7 +321,7 @@ async def test_traffic_controller_warmup_exceeds_requests():
 @pytest.mark.asyncio
 async def test_traffic_controller_no_warmup():
     """测试 TrafficController 无 warmup."""
-    client = MockClient(ttft_ms=10.0, tbt_ms=5.0)
+    client = StubClient(ttft_ms=10.0, tbt_ms=5.0)
     profile = TrafficProfile(
         pattern=ArrivalPattern.INSTANT,
         warmup_requests=0,
@@ -338,7 +338,7 @@ async def test_traffic_controller_no_warmup():
 @pytest.mark.asyncio
 async def test_traffic_controller_poisson_mode():
     """测试 TrafficController POISSON 模式."""
-    client = MockClient(ttft_ms=5.0, tbt_ms=2.0)
+    client = StubClient(ttft_ms=5.0, tbt_ms=2.0)
     profile = TrafficProfile(
         pattern=ArrivalPattern.POISSON,
         request_rate=50.0,  # 50 QPS（快速测试）
@@ -356,7 +356,7 @@ async def test_traffic_controller_poisson_mode():
 @pytest.mark.asyncio
 async def test_traffic_controller_empty_requests():
     """测试 TrafficController 空请求列表."""
-    client = MockClient(ttft_ms=10.0, tbt_ms=5.0)
+    client = StubClient(ttft_ms=10.0, tbt_ms=5.0)
     profile = TrafficProfile(pattern=ArrivalPattern.INSTANT)
     controller = TrafficController(client, profile)
 
@@ -368,7 +368,7 @@ async def test_traffic_controller_empty_requests():
 @pytest.mark.asyncio
 async def test_traffic_controller_gamma_mode():
     """测试 TrafficController GAMMA 模式."""
-    client = MockClient(ttft_ms=5.0, tbt_ms=2.0)
+    client = StubClient(ttft_ms=5.0, tbt_ms=2.0)
     profile = TrafficProfile(
         pattern=ArrivalPattern.GAMMA,
         request_rate=50.0,  # 50 QPS
@@ -392,7 +392,7 @@ async def test_traffic_controller_gamma_mode():
 @pytest.mark.asyncio
 async def test_traffic_controller_integration():
     """集成测试：完整流程."""
-    client = MockClient(ttft_ms=10.0, tbt_ms=5.0)
+    client = StubClient(ttft_ms=10.0, tbt_ms=5.0)
 
     # 配置：POISSON 模式，10 QPS，2 个 warmup
     profile = TrafficProfile(
@@ -420,7 +420,7 @@ async def test_traffic_controller_integration():
 @pytest.mark.asyncio
 async def test_request_order_preserved():
     """测试请求顺序保持一致."""
-    client = MockClient(ttft_ms=5.0, tbt_ms=2.0)
+    client = StubClient(ttft_ms=5.0, tbt_ms=2.0)
     profile = TrafficProfile(
         pattern=ArrivalPattern.FIXED,
         request_rate=100.0,

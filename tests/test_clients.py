@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from test_helpers import StubClient
 
-from sagellm_benchmark.clients import BenchmarkClient, MockClient
+from sagellm_benchmark.clients import BenchmarkClient
 from sagellm_benchmark.types import BenchmarkRequest
 
 
@@ -35,13 +36,13 @@ def batch_requests() -> list[BenchmarkRequest]:
     ]
 
 
-class TestMockClient:
-    """Tests for MockClient."""
+class TestStubClient:  # Renamed from TestMockClient
+    """Tests for StubClient."""
 
     @pytest.mark.asyncio
     async def test_single_request(self, sample_request: BenchmarkRequest) -> None:
         """Test single request execution."""
-        client = MockClient(ttft_ms=10.0, tbt_ms=5.0, throughput_tps=100.0)
+        client = StubClient(ttft_ms=10.0, tbt_ms=5.0, throughput_tps=100.0)
 
         result = await client.generate(sample_request)
 
@@ -56,7 +57,7 @@ class TestMockClient:
     @pytest.mark.asyncio
     async def test_sequential_batch(self, batch_requests: list[BenchmarkRequest]) -> None:
         """Test sequential batch execution."""
-        client = MockClient(ttft_ms=5.0, tbt_ms=2.0)
+        client = StubClient(ttft_ms=5.0, tbt_ms=2.0)
 
         results = await client.generate_batch(batch_requests, concurrent=False)
 
@@ -68,7 +69,7 @@ class TestMockClient:
     @pytest.mark.asyncio
     async def test_concurrent_batch(self, batch_requests: list[BenchmarkRequest]) -> None:
         """Test concurrent batch execution."""
-        client = MockClient(ttft_ms=5.0, tbt_ms=2.0)
+        client = StubClient(ttft_ms=5.0, tbt_ms=2.0)
 
         results = await client.generate_batch(batch_requests, concurrent=True)
 
@@ -81,7 +82,7 @@ class TestMockClient:
     @pytest.mark.asyncio
     async def test_error_simulation(self) -> None:
         """Test error simulation."""
-        client = MockClient(error_rate=1.0)  # 100% failure rate
+        client = StubClient(error_rate=1.0)  # 100% failure rate
 
         request = BenchmarkRequest(
             prompt="Test",
@@ -99,7 +100,7 @@ class TestMockClient:
     async def test_timeout(self) -> None:
         """Test timeout handling."""
         # Create a very slow client with short timeout
-        client = MockClient(ttft_ms=1000.0, tbt_ms=1000.0, timeout=0.1)
+        client = StubClient(ttft_ms=1000.0, tbt_ms=1000.0, timeout=0.1)
 
         request = BenchmarkRequest(
             prompt="Test",
@@ -116,7 +117,7 @@ class TestMockClient:
     @pytest.mark.asyncio
     async def test_health_check(self) -> None:
         """Test health check."""
-        client = MockClient()
+        client = StubClient()
 
         is_healthy = await client.health_check()
 
@@ -178,7 +179,7 @@ class TestBenchmarkClientInterface:
 @pytest.mark.asyncio
 async def test_batch_order_preservation() -> None:
     """Test that batch results preserve input order."""
-    client = MockClient()
+    client = StubClient()
 
     requests = [
         BenchmarkRequest(
@@ -202,7 +203,7 @@ async def test_batch_order_preservation() -> None:
 async def test_batch_partial_failure() -> None:
     """Test batch execution with partial failures."""
     # 50% failure rate
-    client = MockClient(error_rate=0.5)
+    client = StubClient(error_rate=0.5)
 
     requests = [
         BenchmarkRequest(
@@ -231,8 +232,8 @@ async def test_batch_partial_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_simulated_itl_generation(sample_request: BenchmarkRequest) -> None:
-    """Test that MockClient generates ITL list and E2E latency."""
-    client = MockClient(ttft_ms=10.0, tbt_ms=5.0, throughput_tps=100.0)
+    """Test that StubClient generates ITL list and E2E latency."""
+    client = StubClient(ttft_ms=10.0, tbt_ms=5.0, throughput_tps=100.0)
 
     result = await client.generate(sample_request)
 
@@ -243,9 +244,11 @@ async def test_simulated_itl_generation(sample_request: BenchmarkRequest) -> Non
     assert result.itl_list is not None
     assert len(result.itl_list) == sample_request.max_tokens
 
-    # 验证 ITL 值在合理范围（tbt_ms ± 20% jitter）
-    for itl in result.itl_list:
-        assert 4.0 <= itl <= 6.0  # 5.0 * 0.8 = 4.0, 5.0 * 1.2 = 6.0
+    # 验证 ITL 值在合理范围
+    # First token should be TTFT (10.0ms), rest should be TBT (5.0ms)
+    assert result.itl_list[0] == 10.0  # TTFT
+    for itl in result.itl_list[1:]:  # Remaining tokens
+        assert itl == 5.0  # TBT
 
     # 验证 e2e_latency_ms 大于 0
     assert result.e2e_latency_ms > 0
@@ -258,7 +261,7 @@ async def test_simulated_itl_generation(sample_request: BenchmarkRequest) -> Non
 @pytest.mark.asyncio
 async def test_simulated_full_itl_mode() -> None:
     """Test simulated client with simulate_full_itl=True for realistic simulation."""
-    client = MockClient(ttft_ms=5.0, tbt_ms=2.0, simulate_full_itl=True)
+    client = StubClient(ttft_ms=5.0, tbt_ms=2.0, simulate_full_itl=True)
 
     request = BenchmarkRequest(
         prompt="Test",
@@ -288,7 +291,7 @@ async def test_simulated_full_itl_mode() -> None:
 @pytest.mark.asyncio
 async def test_simulated_itl_on_failure() -> None:
     """Test that failed requests don't have ITL/E2E data."""
-    client = MockClient(error_rate=1.0)  # 100% failure
+    client = StubClient(error_rate=1.0)  # 100% failure
 
     request = BenchmarkRequest(
         prompt="Test",
@@ -308,7 +311,7 @@ async def test_simulated_itl_on_failure() -> None:
 @pytest.mark.asyncio
 async def test_simulated_itl_in_metrics() -> None:
     """Test that ITL list is also stored in Protocol Metrics."""
-    client = MockClient(ttft_ms=5.0, tbt_ms=2.0)
+    client = StubClient(ttft_ms=5.0, tbt_ms=2.0)
 
     request = BenchmarkRequest(
         prompt="Test",
