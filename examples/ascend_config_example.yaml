@@ -1,0 +1,83 @@
+# Ascend Engine Configuration Example (MVP)
+# This configuration file demonstrates how to set up benchmarks for Ascend backend
+
+engine:
+  # Engine type - must be "ascend" for Ascend backend
+  type: ascend
+
+  # Engine ID for tracking and logging
+  engine_id: "bench-ascend-001"
+
+  # Device specification (NPU device ID)
+  # Format: "ascend" or "ascend:0", "ascend:1", etc.
+  device: "ascend:0"
+
+  # Model configuration
+  model_path: "sshleifer/tiny-gpt2"  # or your model path
+
+  # Generation settings
+  max_new_tokens: 128
+
+  # Optional: Ascend-specific settings
+  # precision: "fp16"         # FP16 precision for Ascend
+  # max_batch_size: 8         # Batch size for throughput
+  # enable_graph_mode: false  # Enable graph optimization (if supported)
+
+# Benchmark workload settings
+benchmark:
+  # Output directory for results
+  output_dir: "./benchmark_results_ascend"
+
+  # Year 1 Demo Contract workloads
+  workloads:
+    - name: "short_input"
+      prompt_tokens: 128
+      output_tokens: 128
+      num_requests: 10
+
+    - name: "long_input"
+      prompt_tokens: 2048
+      output_tokens: 512
+      num_requests: 5
+
+    - name: "stress_test"
+      prompt_tokens: 256
+      output_tokens: 256
+      num_requests: 20
+      concurrent_requests: 4
+      kv_budget_mb: 512  # Trigger eviction
+
+# Fallback behavior
+fallback:
+  # If Ascend is not available, fallback to CPU
+  enable: true
+  backend: "cpu"
+
+# Logging and observability
+observability:
+  # Enable structured logging
+  enable_logging: true
+  log_level: "INFO"
+
+  # Enable metrics collection
+  enable_metrics: true
+
+  # Required fields for all operations
+  # - trace_id
+  # - request_id
+  # - engine_id
+  # - timestamps (queued_at, scheduled_at, executed_at, completed_at)
+
+# Expected metrics (Year 1 Demo Contract)
+expected_metrics:
+  ttft_ms: 45.2         # Time to first token
+  tbt_ms: 12.5          # Time between tokens
+  tpot_ms: 12.5         # Time per output token
+  throughput_tps: 80.0  # Throughput (tokens/sec)
+  peak_mem_mb: 24576    # Peak memory usage
+  error_rate: 0.02      # Error rate
+  kv_used_tokens: 4096  # KV cache usage (tokens)
+  prefix_hit_rate: 0.85 # Prefix cache hit rate
+  evict_count: 3        # Number of evictions
+  evict_ms: 2.1         # Eviction time
+  spec_accept_rate: 0.72 # Speculative decoding accept rate

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - sageLLM 0.3 release alignment.
+- Ascend engine benchmark demo configuration (Task F - MVP).
+- `examples/ascend_demo.py` - Python script for Ascend benchmark.
+- `examples/ascend_config_example.yaml` - YAML configuration example for Ascend.
+- `docs/ASCEND_BENCHMARK.md` - Documentation for running benchmarks on Ascend backend.
 
 ### Changed
 - Bumped version to 0.3.0.0.
