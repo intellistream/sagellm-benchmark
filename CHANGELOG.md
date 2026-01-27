@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Bumped version to 0.3.0.0.
 - Updated dependency ranges to >=0.3.0.0,<0.4.0 where applicable.
+- quickstart.sh 现在要求先创建并激活 conda/venv 环境后再继续。
 
 ## [0.1.1.1] - 2026-01-26
 
