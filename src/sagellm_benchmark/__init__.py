@@ -2,23 +2,47 @@
 
 from __future__ import annotations
 
-from sagellm_benchmark.metrics import BenchmarkMetrics, MetricsCollector
-from sagellm_benchmark.runner import BenchmarkConfig, BenchmarkRunner, run_year1_benchmark
-from sagellm_benchmark.workloads import YEAR1_WORKLOADS, WorkloadConfig, WorkloadType
+# Clients - Task B 客户端
+from sagellm_benchmark.clients import (
+    BenchmarkClient,
+)
 
-__version__ = "0.1.0"
+# Traffic - 流量控制
+from sagellm_benchmark.traffic import (
+    ArrivalPattern,
+    RequestGenerator,
+    TrafficController,
+    TrafficProfile,
+)
+
+# Types - 公共数据类型（契约定义）
+from sagellm_benchmark.types import (
+    AggregatedMetrics,
+    BenchmarkRequest,
+    BenchmarkResult,
+    ContractResult,
+    ContractVersion,
+    WorkloadSpec,
+    WorkloadType,
+)
+
+__version__ = "0.3.0.0"
 
 __all__ = [
     "__version__",
-    # Metrics
-    "BenchmarkMetrics",
-    "MetricsCollector",
-    # Runner
-    "BenchmarkRunner",
-    "BenchmarkConfig",
-    "run_year1_benchmark",
-    # Workloads
-    "WorkloadConfig",
+    # Types (契约定义)
+    "BenchmarkRequest",
+    "BenchmarkResult",
+    "WorkloadSpec",
     "WorkloadType",
-    "YEAR1_WORKLOADS",
+    "AggregatedMetrics",
+    "ContractResult",
+    "ContractVersion",
+    # Clients
+    "BenchmarkClient",
+    # Traffic
+    "ArrivalPattern",
+    "TrafficProfile",
+    "RequestGenerator",
+    "TrafficController",
 ]

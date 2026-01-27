@@ -1,0 +1,60 @@
+# Pre-commit hooks configuration for sagellm-benchmark
+# See https://pre-commit.com for more information
+#
+# Installation:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Usage:
+#   pre-commit run --all-files              # Run on all files
+#   pre-commit run --files src/             # Run on specific files
+#   git commit --no-verify                  # Skip hooks temporarily
+
+default_language_version:
+  python: python3.11
+
+repos:
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--unsafe]
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: detect-private-key
+
+  # Python: Ruff linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.14
+    hooks:
+      - id: ruff
+        name: ruff check
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^(src/|tests/).*\.py$
+      - id: ruff-format
+        name: ruff format
+        files: ^(src/|tests/).*\.py$
+
+  - repo: local
+    hooks:
+      - id: forbid-mock
+        name: forbid mock usage
+        entry: bash -c 'if grep -nE "\\bmock\\b|mock_|_mock|--mock" "$@"; then echo "Mock usage is forbidden. Use CPU backend for validation."; exit 1; fi'
+        language: system
+        types: [text]
+        pass_filenames: true
+        exclude: ^(\.pre-commit-config\.yaml|\.mypy_cache/|\.ruff_cache/|\.pytest_cache/)
+
+  # Python: MyPy type checking (optional for benchmark)
+  # Note: Skipped in pre-commit for speed, runs in CI
+  # To run locally: mypy src/sagellm_benchmark

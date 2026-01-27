@@ -1,14 +1,26 @@
 # sagellm-benchmark
 
-Benchmark Suite & End-to-End Testing for sageLLM inference engine.
+## Protocol Compliance (Mandatory)
 
-## Overview
+- MUST follow Protocol v0.1: https://github.com/intellistream/sagellm-docs/blob/main/docs/specs/protocol_v0.1.md
+- Any globally shared definitions (fields, error codes, metrics, IDs, schemas) MUST be added to Protocol first.
 
-This package provides comprehensive benchmarking and validation for Year 1/2/3:
-- E2E workload execution and performance benchmarking
-- Metrics collection and reporting
-- Mock-first testing infrastructure
-- Integration with all sageLLM modules
+[![CI](https://github.com/intellistream/sagellm-benchmark/actions/workflows/ci.yml/badge.svg)](https://github.com/intellistream/sagellm-benchmark/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/intellistream/sagellm-benchmark/branch/main/graph/badge.svg)](https://codecov.io/gh/intellistream/sagellm-benchmark)
+[![PyPI version](https://badge.fury.io/py/isagellm-benchmark.svg)](https://badge.fury.io/py/isagellm-benchmark)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: Private](https://img.shields.io/badge/License-Private-red.svg)](LICENSE)
+
+Benchmark suite for sageLLM inference engine performance and validation.
+
+New here? See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide.
+
+## Features
+
+- End-to-end workload execution (short, long, stress)
+- Standardized JSON metrics and reports
+- One-command benchmark runner
+- Extensible backend support
 
 ## Installation
 
@@ -19,67 +31,72 @@ pip install isagellm-benchmark
 ## Quick Start
 
 ```bash
-# Run Year 1 benchmark with mock backend
-sagellm-benchmark run --workload year1 --backend mock
+# Run all workloads and generate reports
+./run_benchmark.sh
 
-# Run with real LMDeploy backend
-sagellm-benchmark run --workload year1 --backend lmdeploy --model Qwen/Qwen2-7B
-
-# Generate metrics report
-sagellm-benchmark report --output metrics.json
+# Specify a custom output directory
+./run_benchmark.sh ./my_results
 ```
 
-## Year 1 Benchmark Contract
+CLI examples:
 
-The benchmark validates all modules against this contract:
+```bash
+# Run the full suite with the CPU backend
+sagellm-benchmark run --workload year1 --backend cpu
 
-### Workload (3 segments)
-1. **Short input**: 128 tokens prompt → 128 tokens output
-2. **Long input**: 2048 tokens prompt → 512 tokens output
-3. **Pressure test**: Concurrent requests, KV eviction
+# Run with a CPU model
+sagellm-benchmark run --workload year1 --backend cpu --model gpt2
 
-### Required Metrics
-```json
-{
-  "ttft_ms": 45.2,
-  "tbt_ms": 12.5,
-  "tpot_ms": 12.5,
-  "throughput_tps": 80.0,
-  "peak_mem_mb": 24576,
-  "error_rate": 0.02,
-  "kv_used_tokens": 4096,
-  "kv_used_bytes": 134217728,
-  "prefix_hit_rate": 0.85,
-  "evict_count": 3,
-  "evict_ms": 2.1,
-  "spec_accept_rate": 0.72
-}
+# Run a single workload
+sagellm-benchmark run --workload short --backend cpu
+
+# Generate reports
+sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format markdown
 ```
 
-## Team Assignment
+## Workloads
 
-- **Task0.2 E2E Benchmark Suite**: 张书豪老师团队
+- **Short**: 128 prompt → 128 output (5 requests)
+- **Long**: 200 prompt → 200 output (3 requests)
+- **Stress**: 256 prompt → 256 output (10 concurrent requests)
 
-## Dependencies
+## Outputs
 
-- `isagellm-protocol>=0.1.0` - Protocol definitions
-- `isagellm-backend>=0.1.0` - Backend abstraction
-- `isagellm-core>=0.1.0` - Engine core
-- `isagellm-kv-cache>=0.1.0` - KV cache (optional)
-- `isagellm-comm>=0.1.0` - Communication (optional)
-- `isagellm-compression>=0.1.0` - Compression (optional)
+After running the benchmark, results are written to a folder like:
+
+```
+benchmark_results/
+├── benchmark_summary.json
+├── short_input_metrics.json
+├── long_input_metrics.json
+├── stress_test_metrics.json
+└── REPORT.md
+```
+
+Metrics include latency, throughput, memory, and error rates. See
+[docs/USAGE.md](docs/USAGE.md) for details.
+
+## Backends
+
+- **cpu**: CPU inference via HuggingFace Transformers (requires `--model`)
+- **planned**: lmdeploy, vllm
+
+## Documentation
+
+- [QUICKSTART.md](QUICKSTART.md) - 5 分钟快速开始
+- [docs/USAGE.md](docs/USAGE.md) - 详细使用指南
+- [docs/CLIENTS_GUIDE.md](docs/CLIENTS_GUIDE.md) - 客户端选择指南
+- [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md) - 部署架构说明（HTTP API vs 直连）
 
 ## Development
 
 ```bash
-# Install dev dependencies
+git clone git@github.com:intellistream/sagellm-benchmark.git
+cd sagellm-benchmark
 pip install -e ".[dev]"
-
-# Run tests
 pytest tests/ -v
-
-# Run mock demo
-python -m sagellm_demo.cli run --backend mock
+ruff check .
+ruff format .
 ```
 
 ## License

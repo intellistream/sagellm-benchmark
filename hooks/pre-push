@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+# Pre-push hook for sageLLM repositories
+# Checks version updates and optionally uploads to PyPI using sage-pypi-publisher
+
+set -eo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Read stdin (contains: local_ref local_sha remote_ref remote_sha)
+while read local_ref local_sha remote_ref remote_sha; do
+    # Skip if deleting a branch
+    if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+        exit 0
+    fi
+
+    # Get the range of commits being pushed
+    if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+        # New branch - check last 5 commits
+        range="$local_sha~5..$local_sha"
+    else
+        range="$remote_sha..$local_sha"
+    fi
+
+    # Find version files
+    version_files=()
+    if [ -f "pyproject.toml" ]; then
+        version_files+=("pyproject.toml")
+    fi
+    if [ -f "src/sagellm/__init__.py" ]; then
+        version_files+=("src/sagellm/__init__.py")
+    fi
+    if [ -f "src/sagellm_protocol/__init__.py" ]; then
+        version_files+=("src/sagellm_protocol/__init__.py")
+    fi
+    if [ -f "src/sagellm_backend/__init__.py" ]; then
+        version_files+=("src/sagellm_backend/__init__.py")
+    fi
+    if [ -f "src/sagellm_core/__init__.py" ]; then
+        version_files+=("src/sagellm_core/__init__.py")
+    fi
+    if [ -f "src/sagellm_control/__init__.py" ]; then
+        version_files+=("src/sagellm_control/__init__.py")
+    fi
+    if [ -f "src/sagellm_gateway/__init__.py" ]; then
+        version_files+=("src/sagellm_gateway/__init__.py")
+    fi
+    if [ -f "src/sagellm_kv_cache/__init__.py" ]; then
+        version_files+=("src/sagellm_kv_cache/__init__.py")
+    fi
+    if [ -f "src/sagellm_comm/__init__.py" ]; then
+        version_files+=("src/sagellm_comm/__init__.py")
+    fi
+    if [ -f "src/sagellm_compression/__init__.py" ]; then
+        version_files+=("src/sagellm_compression/__init__.py")
+    fi
+
+    if [ ${#version_files[@]} -eq 0 ]; then
+        # No version files found, allow push
+        exit 0
+    fi
+
+    # Check if version was updated in this push
+    version_updated=false
+    for vfile in "${version_files[@]}"; do
+        if git diff --name-only "$range" 2>/dev/null | grep -q "^$vfile$"; then
+            version_updated=true
+            break
+        fi
+    done
+
+    # Get current version
+    current_version=""
+    if [ -f "pyproject.toml" ]; then
+        current_version=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    elif [ ${#version_files[@]} -gt 0 ]; then
+        # Try to get from __init__.py
+        init_file="${version_files[0]}"
+        if [ -f "$init_file" ]; then
+            current_version=$(grep '__version__ = ' "$init_file" | head -1 | sed 's/__version__ = "\(.*\)"/\1/')
+        fi
+    fi
+
+    if [ "$version_updated" = true ]; then
+        # Version was updated - ask if should upload to PyPI
+        echo -e "${GREEN}✓ Version updated to $current_version${NC}"
+        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${YELLOW}📦 Build and upload version $current_version to PyPI?${NC}"
+        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo "  [y] Yes, build and upload to PyPI (using sage-pypi-publisher)"
+        echo "  [n] No, just push to GitHub"
+        echo "  [c] Cancel push"
+        echo -n "Your choice [y/n/c]: "
+        read -r choice </dev/tty
+
+        case "$choice" in
+            y|Y)
+                # Check if sage-pypi-publisher is installed
+                if ! command -v sage-pypi-publisher &> /dev/null; then
+                    echo -e "${RED}❌ sage-pypi-publisher not found${NC}"
+                    echo -e "${YELLOW}Install it with: pip install isage-pypi-publisher${NC}"
+                    echo -e "${YELLOW}Or activate sage conda env${NC}"
+                    echo -e "${YELLOW}Continue pushing to GitHub without PyPI upload? [y/n]: ${NC}"
+                    read -r continue_choice </dev/tty
+                    if [ "$continue_choice" != "y" ] && [ "$continue_choice" != "Y" ]; then
+                        echo -e "${RED}Push cancelled${NC}"
+                        exit 1
+                    fi
+                else
+                    # Get package name from pyproject.toml
+                    package_name=""
+                    if [ -f "pyproject.toml" ]; then
+                        package_name=$(grep '^name = ' pyproject.toml | head -1 | sed 's/name = "\(.*\)"/\1/')
+                    fi
+
+                    # Check if version already exists on PyPI before building
+                    if [ -n "$package_name" ] && [ -n "$current_version" ]; then
+                        echo -e "${BLUE}🔍 Checking PyPI for existing version...${NC}"
+                        pypi_response=$(curl -s "https://pypi.org/pypi/$package_name/$current_version/json" 2>/dev/null)
+
+                        if echo "$pypi_response" | grep -q '"version"'; then
+                            echo -e "${YELLOW}⚠️  Version $current_version already exists on PyPI!${NC}"
+                            echo ""
+                            echo "What would you like to do?"
+                            echo "  [s] Skip PyPI upload, just push to GitHub"
+                            echo "  [u] Update version and upload"
+                            echo "  [c] Cancel push"
+                            echo -n "Your choice [s/u/c]: "
+                            read -r version_choice </dev/tty
+
+                            case "$version_choice" in
+                                s|S)
+                                    echo -e "${GREEN}✓ Skipping PyPI upload, pushing to GitHub only${NC}"
+                                    ;;
+                                u|U)
+                                    echo -n "Enter new version (current: $current_version): "
+                                    read -r new_version </dev/tty
+
+                                    if [ -z "$new_version" ]; then
+                                        echo -e "${RED}No version provided, push cancelled${NC}"
+                                        exit 1
+                                    fi
+
+                                    # Update version in files
+                                    if [ -f "pyproject.toml" ]; then
+                                        sed -i "s/^version = \".*\"/version = \"$new_version\"/" pyproject.toml
+                                        git add pyproject.toml
+                                    fi
+
+                                    for vfile in "${version_files[@]}"; do
+                                        if [[ "$vfile" == *"__init__.py" ]]; then
+                                            sed -i "s/__version__ = \".*\"/__version__ = \"$new_version\"/" "$vfile"
+                                            git add "$vfile"
+                                        fi
+                                    done
+
+                                    git commit --amend --no-edit
+                                    current_version="$new_version"
+
+                                    echo -e "${GREEN}✓ Version updated to $new_version${NC}"
+                                    # Fall through to upload
+                                    ;;
+                                *)
+                                    echo -e "${RED}Push cancelled${NC}"
+                                    exit 1
+                                    ;;
+                            esac
+
+                            # If we chose 's' (skip), don't upload
+                            if [ "$version_choice" = "s" ] || [ "$version_choice" = "S" ]; then
+                                exit 0
+                            fi
+                        fi
+                    fi
+
+                    echo -e "${BLUE}🔨 Building and uploading to PyPI...${NC}"
+
+                    # Load .env if exists (for PYPI_TOKEN)
+                    if [ -f "../sagellm/.env" ]; then
+                        set -a
+                        source "../sagellm/.env"
+                        set +a
+                    elif [ -f ".env" ]; then
+                        set -a
+                        source ".env"
+                        set +a
+                    fi
+
+                    # Build and upload using sage-pypi-publisher (private mode)
+                    upload_output=$(sage-pypi-publisher build . --upload --no-dry-run 2>&1)
+                    upload_status=$?
+                    echo "$upload_output"
+
+                    if [ $upload_status -eq 0 ]; then
+                        echo -e "${GREEN}✓ Successfully uploaded to PyPI${NC}"
+                    else
+                        echo -e "${RED}❌ PyPI upload failed${NC}"
+                        echo -e "${YELLOW}Continue pushing to GitHub anyway? [y/n]: ${NC}"
+                        read -r continue_choice </dev/tty
+                        if [ "$continue_choice" != "y" ] && [ "$continue_choice" != "Y" ]; then
+                            echo -e "${RED}Push cancelled${NC}"
+                            exit 1
+                        fi
+                    fi
+                fi
+                ;;
+            n|N)
+                echo -e "${YELLOW}Skipping PyPI upload, pushing to GitHub only${NC}"
+                ;;
+            *)
+                echo -e "${RED}Push cancelled${NC}"
+                exit 1
+                ;;
+        esac
+    else
+        # Version was NOT updated - warn and offer to update
+        echo -e "${RED}⚠  WARNING: Version not updated!${NC}"
+        if [ -n "$current_version" ]; then
+            echo -e "${BLUE}📌 Current version: $current_version${NC}"
+        fi
+        echo ""
+        echo "What would you like to do?"
+        echo "  [u] Update version now (will open editor)"
+        echo "  [y] Continue without version update"
+        echo "  [n] Cancel push"
+        echo -n "Your choice [u/y/n]: "
+        read -r choice </dev/tty
+
+        case "$choice" in
+            u|U)
+                echo -n "Enter new version (e.g., 0.1.4): "
+                read -r new_version </dev/tty
+
+                if [ -z "$new_version" ]; then
+                    echo -e "${RED}No version provided, push cancelled${NC}"
+                    exit 1
+                fi
+
+                echo -e "${GREEN}✓ $current_version → $new_version${NC}"
+
+                # Update version in files
+                if [ -f "pyproject.toml" ]; then
+                    sed -i "s/^version = \".*\"/version = \"$new_version\"/" pyproject.toml
+                    git add pyproject.toml
+                fi
+
+                # Update __init__.py if exists
+                for vfile in "${version_files[@]}"; do
+                    if [[ "$vfile" == *"__init__.py" ]]; then
+                        sed -i "s/__version__ = \".*\"/__version__ = \"$new_version\"/" "$vfile"
+                        git add "$vfile"
+                    fi
+                done
+
+                # Commit the version update
+                git commit -m "chore: bump version to $new_version"
+
+                # Now ask if should upload to PyPI
+                echo -e "${YELLOW}📦 Build and upload to PyPI? [y/n]: ${NC}"
+                read -r upload_choice </dev/tty
+
+                if [ "$upload_choice" = "y" ] || [ "$upload_choice" = "Y" ]; then
+                    # Check if sage-pypi-publisher is installed
+                    if ! command -v sage-pypi-publisher &> /dev/null; then
+                        echo -e "${RED}❌ sage-pypi-publisher not found${NC}"
+                        echo -e "${YELLOW}Install it with: pip install isage-pypi-publisher${NC}"
+                        echo -e "${YELLOW}Or activate sage conda env and retry${NC}"
+                        exit 1
+                    fi
+
+                    # Load .env if exists
+                    if [ -f "../sagellm/.env" ]; then
+                        set -a
+                        source "../sagellm/.env"
+                        set +a
+                    elif [ -f ".env" ]; then
+                        set -a
+                        source ".env"
+                        set +a
+                    fi
+
+                    if sage-pypi-publisher build . --upload --no-dry-run; then
+                        echo -e "${GREEN}✓ Successfully uploaded to PyPI${NC}"
+                    else
+                        echo -e "${RED}❌ PyPI upload failed${NC}"
+                        exit 1
+                    fi
+                fi
+                ;;
+            y|Y)
+                echo -e "${YELLOW}Continuing without version update${NC}"
+                ;;
+            *)
+                echo -e "${RED}Push cancelled${NC}"
+                exit 1
+                ;;
+        esac
+    fi
+done
+
+exit 0
