@@ -1,4 +1,4 @@
-name: Sync Benchmark Results to Website
+name: Trigger Website Sync
 
 on:
   push:
@@ -7,111 +7,22 @@ on:
       - main-dev
     paths:
       - 'outputs/**/*_leaderboard.json'
-  pull_request:
-    branches:
-      - main
-      - main-dev
-    paths:
-      - 'outputs/**/*_leaderboard.json'
 
 jobs:
-  sync-results:
+  trigger-sync:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     
     steps:
-      - name: Checkout benchmark repository
-        uses: actions/checkout@v4
+      - name: Trigger website sync workflow
+        uses: peter-evans/repository-dispatch@v2
         with:
-          fetch-depth: 0
-      
-      - name: Find leaderboard JSON files
-        id: find-files
-        run: |
-          echo "Finding leaderboard files..."
-          files=$(find outputs/ -name "*_leaderboard.json" -type f)
-          count=$(echo "$files" | wc -l)
-          echo "Found $count leaderboard files"
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$files" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "count=$count" >> $GITHUB_OUTPUT
-      
-      - name: Checkout website repository
-        uses: actions/checkout@v4
-        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           repository: intellistream/sagellm-website
-          path: website
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: main
-      
-      - name: Copy leaderboard files to website
-        run: |
-          echo "Copying leaderboard files to website/data/results/"
-          mkdir -p website/data/results
-          
-          # Copy all leaderboard files
-          while IFS= read -r file; do
-            if [ -n "$file" ]; then
-              # Extract backend/model/workload from path
-              # outputs/cpu/gpt2/short_20260128_005/short_input_leaderboard.json
-              backend=$(echo $file | cut -d'/' -f2)
-              model=$(echo $file | cut -d'/' -f3)
-              run_id=$(echo $file | cut -d'/' -f4)
-              filename=$(basename $file)
-              
-              # Create destination directory
-              dest_dir="website/data/results/${backend}/${model}"
-              mkdir -p "$dest_dir"
-              
-              # Copy file with run_id prefix to avoid conflicts
-              dest_file="$dest_dir/${run_id}_${filename}"
-              cp "$file" "$dest_file"
-              echo "✓ Copied: $file -> $dest_file"
-            fi
-          done <<< "${{ steps.find-files.outputs.files }}"
-          
-          echo "Copy completed!"
-      
-      - name: Create Pull Request to website
-        uses: peter-evans/create-pull-request@v5
-        with:
-          path: website
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: |
-            chore: sync benchmark results from sagellm-benchmark
-            
-            Auto-sync from sagellm-benchmark@${{ github.sha }}
-            Branch: ${{ github.ref_name }}
-            Trigger: ${{ github.event_name }}
-          branch: sync-benchmark-results-${{ github.run_number }}
-          delete-branch: true
-          title: "[Auto] Sync Benchmark Results - ${{ github.ref_name }}"
-          body: |
-            ## Automated Benchmark Results Sync
-            
-            This PR automatically syncs benchmark results from `sagellm-benchmark` repository.
-            
-            **Source Details:**
-            - Repository: `intellistream/sagellm-benchmark`
-            - Branch: `${{ github.ref_name }}`
-            - Commit: `${{ github.sha }}`
-            - Trigger: `${{ github.event_name }}`
-            
-            **Files Synced:**
-            - Total leaderboard files: ${{ steps.find-files.outputs.count }}
-            - Destination: `data/results/<backend>/<model>/`
-            
-            **Action Required:**
-            - ✅ Review the benchmark results
-            - ✅ Merge if results look correct
-            - ❌ Close if results are invalid
-            
-            ---
-            
-            *This PR was automatically created by GitHub Actions.*
-          labels: |
-            automated
-            benchmark-sync
-            data-update
-          draft: false
+          event-type: benchmark-updated
+          client-payload: |
+            {
+              "repository": "${{ github.repository }}",
+              "branch": "${{ github.ref_name }}",
+              "commit": "${{ github.sha }}",
+              "pusher": "${{ github.actor }}"
+            }
