@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import subprocess
 import uuid
@@ -12,6 +13,14 @@ from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sagellm_benchmark.types import AggregatedMetrics
+
+
+# Workload 映射表（根据 Year1 Demo Contract）
+WORKLOAD_SPECS = {
+    "short_input": {"input_length": 128, "output_length": 128},
+    "long_input": {"input_length": 2048, "output_length": 512},  # Year1 Demo Contract
+    "stress_test": {"input_length": 256, "output_length": 256},
+}
 
 
 class LeaderboardExporter:
@@ -46,8 +55,17 @@ class LeaderboardExporter:
             if torch.cuda.is_available():
                 hardware["vendor"] = "NVIDIA"
                 hardware["chip_model"] = torch.cuda.get_device_name(0)
-                hardware["chip_count"] = torch.cuda.device_count()
-                hardware["chips_per_node"] = torch.cuda.device_count()
+                
+                # 支持通过环境变量强制单卡配置
+                force_single_chip = os.getenv("SAGELLM_FORCE_SINGLE_CHIP", "false").lower() == "true"
+                
+                if force_single_chip:
+                    hardware["chip_count"] = 1
+                    hardware["chips_per_node"] = 1
+                else:
+                    hardware["chip_count"] = torch.cuda.device_count()
+                    hardware["chips_per_node"] = torch.cuda.device_count()
+                
                 hardware["memory_per_chip_gb"] = round(
                     torch.cuda.get_device_properties(0).total_memory / (1024**3), 2
                 )
@@ -171,8 +189,14 @@ class LeaderboardExporter:
             hardware["chip_count"], has_cluster=False
         )
         
-        # Extract model info from config
-        model_name = config.get("model", "unknown")
+        # Extract model info from config (优先使用 model_path，去掉路径部分)
+        model_path = config.get("model_path", config.get("model", "unknown"))
+        # 提取模型名称（处理路径和 HF 格式）
+        if "/" in model_path:
+            model_name = model_path.split("/")[-1]  # HF: "sshleifer/tiny-gpt2" → "tiny-gpt2"
+        else:
+            model_name = model_path  # 本地模型："gpt2" → "gpt2"
+        
         model_info = {
             "name": model_name,
             "parameters": "unknown",  # TODO: Extract from model name
@@ -180,10 +204,11 @@ class LeaderboardExporter:
             "quantization": "None",
         }
         
-        # Extract workload info
+        # Extract workload info (根据 workload_name 映射)
+        workload_spec = WORKLOAD_SPECS.get(workload_name, {"input_length": 128, "output_length": 128})
         workload_info = {
-            "input_length": 128,  # Default, should be from workload config
-            "output_length": 128,
+            "input_length": workload_spec["input_length"],
+            "output_length": workload_spec["output_length"],
             "batch_size": 1,
             "concurrent_requests": 1,
             "dataset": config.get("dataset", "default"),
