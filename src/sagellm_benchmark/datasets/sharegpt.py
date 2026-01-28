@@ -152,6 +152,53 @@ class ShareGPTDataset(BenchmarkDataset):
         data = list(hf_dataset)
         return cls(data, seed=seed, min_prompt_len=min_prompt_len, max_prompt_len=max_prompt_len)
 
+    @classmethod
+    def from_modelscope(
+        cls,
+        dataset_id: str = "AI-ModelScope/ShareGPT-Chinese-English-90k",
+        split: str = "train",
+        seed: int | None = None,
+        min_prompt_len: int = 10,
+        max_prompt_len: int = 10000,
+    ) -> ShareGPTDataset:
+        """从 ModelScope 加载数据集（支持中文 ShareGPT）。
+
+        Args:
+            dataset_id: ModelScope 数据集 ID。
+            split: 数据集 split（如 "train"）。
+            seed: 随机种子。
+            min_prompt_len: 最小 prompt 长度。
+            max_prompt_len: 最大 prompt 长度。
+
+        Returns:
+            加载的 ShareGPTDataset 实例。
+
+        Raises:
+            ImportError: 当 modelscope 库未安装时。
+
+        Example:
+            >>> # 加载中英文 ShareGPT 数据集
+            >>> dataset = ShareGPTDataset.from_modelscope(
+            ...     dataset_id="AI-ModelScope/ShareGPT-Chinese-English-90k"
+            ... )
+        """
+        try:
+            from modelscope.msdatasets import MsDataset
+        except ImportError as e:
+            raise ImportError(
+                "modelscope library required for ModelScope loading. "
+                "Install with: pip install modelscope"
+            ) from e
+
+        logger.info(f"Loading ShareGPT from ModelScope: {dataset_id}")
+        ms_dataset = MsDataset.load(dataset_id, split=split)
+
+        # 转换为列表
+        data = list(ms_dataset)
+        logger.info(f"Loaded {len(data)} conversations from ModelScope")
+        
+        return cls(data, seed=seed, min_prompt_len=min_prompt_len, max_prompt_len=max_prompt_len)
+
     def _extract_prompts(self, data: list[dict[str, Any]]) -> list[str]:
         """从 ShareGPT 数据中提取 prompt。
 

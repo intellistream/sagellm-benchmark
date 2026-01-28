@@ -25,12 +25,14 @@ class BenchmarkConfig:
         workloads: List of workload configurations.
         output_dir: Directory for results (default: ./benchmark_results).
         verbose: Enable verbose logging.
+        dataset: Optional dataset for sampling real prompts.
     """
 
     engine: Any  # BaseEngine instance
     workloads: list[WorkloadConfig]
     output_dir: Path = Path("./benchmark_results")
     verbose: bool = False
+    dataset: Any = None  # Optional BenchmarkDataset instance
 
 
 class BenchmarkRunner:
@@ -73,8 +75,11 @@ class BenchmarkRunner:
             # Save individual results using JSONReporter
             output_file = self.config.output_dir / f"{workload.name}_metrics.json"
             reporter = JSONReporter()
-            reporter.generate(aggregated_metrics, path=output_file)
+            reporter.generate(aggregated_metrics, output_path=str(output_file))
             logger.info(f"Saved metrics to {output_file}")
+            
+            # Export to leaderboard format
+            self._export_leaderboard_entry(workload.name, aggregated_metrics)
 
         # Save summary
         self._save_summary()
@@ -102,6 +107,22 @@ class BenchmarkRunner:
             )
             raise
 
+        # Get prompts from dataset if available
+        if self.config.dataset is not None:
+            from sagellm_benchmark.types import WorkloadSpec
+            spec = WorkloadSpec(
+                name=workload.name,
+                workload_type=workload.workload_type,
+                prompt_len=workload.prompt_tokens,
+                output_len=workload.max_tokens,
+                num_requests=workload.num_requests,
+            )
+            dataset_requests = self.config.dataset.sample(spec)
+            prompts = [req.prompt for req in dataset_requests]
+        else:
+            # Use hardcoded prompt from workload
+            prompts = [workload.prompt] * workload.num_requests
+
         if workload.concurrent:
             # Run requests concurrently
             tasks = []
@@ -110,7 +131,7 @@ class BenchmarkRunner:
                     request_id=f"{workload.name}-{i:03d}",
                     trace_id=f"benchmark-{workload.name}",
                     model=self.config.engine._cpu_config.model_path,
-                    prompt=workload.prompt,
+                    prompt=prompts[i],
                     max_tokens=workload.max_tokens,
                     temperature=workload.temperature,
                     top_p=workload.top_p,
@@ -137,7 +158,7 @@ class BenchmarkRunner:
                     request_id=f"{workload.name}-{i:03d}",
                     trace_id=f"benchmark-{workload.name}",
                     model=self.config.engine._cpu_config.model_path,
-                    prompt=workload.prompt,
+                    prompt=prompts[i],
                     max_tokens=workload.max_tokens,
                     temperature=workload.temperature,
                     top_p=workload.top_p,
@@ -164,20 +185,12 @@ class BenchmarkRunner:
         Returns:
             BenchmarkResult instance.
         """
-        from sagellm_benchmark.types import BenchmarkRequest
-
-        # Create request from response
-        request = BenchmarkRequest(
-            request_id=response.request_id,
-            prompt="",  # Not available in response
-            max_tokens=0,  # Not available in response
-        )
-
         return BenchmarkResult(
-            request=request,
-            metrics=response.metrics,
-            output_text=response.output_text if hasattr(response, "output_text") else "",
+            request_id=response.request_id,
+            success=not hasattr(response, "error") or response.error is None,
             error=response.error if hasattr(response, "error") else None,
+            metrics=response.metrics if hasattr(response, "metrics") else None,
+            output_text=response.output_text if hasattr(response, "output_text") else "",
         )
 
     def _save_summary(self) -> None:
@@ -208,6 +221,40 @@ class BenchmarkRunner:
         summary_file = self.config.output_dir / "benchmark_summary.json"
         summary_file.write_text(json.dumps(summary, indent=2))
         logger.info(f"Saved summary to {summary_file}")
+    
+    def _export_leaderboard_entry(
+        self, workload_name: str, metrics: AggregatedMetrics
+    ) -> None:
+        """Export results to leaderboard format.
+        
+        Args:
+            workload_name: Name of the workload
+            metrics: Aggregated metrics
+        """
+        from sagellm_benchmark.exporters import LeaderboardExporter
+        
+        # Load config.json
+        config_file = self.config.output_dir / "config.json"
+        if not config_file.exists():
+            logger.warning("config.json not found, skipping leaderboard export")
+            return
+        
+        import json
+        with open(config_file) as f:
+            config = json.load(f)
+        
+        # Export to leaderboard format
+        output_file = self.config.output_dir / f"{workload_name}_leaderboard.json"
+        try:
+            LeaderboardExporter.export_to_leaderboard(
+                metrics=metrics,
+                config=config,
+                workload_name=workload_name,
+                output_path=output_file,
+            )
+            logger.info(f"Exported leaderboard entry to {output_file}")
+        except Exception as e:
+            logger.error(f"Failed to export leaderboard entry: {e}")
 
 
 async def run_year1_benchmark(

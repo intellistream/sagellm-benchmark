@@ -19,13 +19,17 @@ classifiers = [
 ]
 
 dependencies = [
-    # Core dependencies (sagellm-protocol is the base)
+    # Core sagellm dependencies
     "isagellm-protocol>=0.3.0.1,<0.4.0",
+    "isagellm-core>=0.3.0.5,<0.4.0",        # Engine creation and execution
+    "isagellm-backend>=0.3.0.6,<0.4.0",     # Backend providers (CPU/CUDA/etc)
     # CLI dependencies
     "click>=8.0.0",
     "rich>=13.0.0",
-    # Async support
-    "asyncio>=3.4.3",
+    # Dataset loading
+    "datasets>=2.14.0",                      # HuggingFace datasets for ShareGPT
+    # Data validation (optional, for schema validation)
+    "jsonschema>=4.0.0",
 ]
 
 [project.optional-dependencies]
