@@ -44,9 +44,26 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Demo outputs
+# Logs
 *.log
-results/
 
 # Agent prompts (internal use only)
 .agent-prompts/*
+
+# =============================================================================
+# Benchmark 结果文件规则
+# =============================================================================
+
+# ✅ 保留: outputs/**/*_leaderboard.json（触发 CI 上传到 HF）
+# ✅ 保留: outputs/**/config.json（配置信息）
+
+# ❌ 忽略: outputs/ 下的其他大文件（metrics、日志等）
+outputs/**/*_metrics.json
+outputs/**/*.log
+outputs/**/benchmark_summary.json
+
+# ❌ 忽略: hf_data/ 目录（CI 聚合的临时文件）
+hf_data/
+
+# ❌ 忽略: 旧的 results/ 目录
+results/

@@ -1,0 +1,53 @@
+# Upload Benchmark Results to Hugging Face
+# 当 benchmark 仓库的 main 或 main-dev 分支有新的 leaderboard 数据提交时，
+# 自动聚合并上传到 Hugging Face Datasets Hub
+
+name: Upload to Hugging Face
+
+on:
+  push:
+    branches:
+      - main
+      - main-dev
+    paths:
+      - 'outputs/**/*_leaderboard.json'
+  
+  # 手动触发
+  workflow_dispatch:
+
+env:
+  HF_REPO: wangyao36/sagellm-benchmark-results
+
+jobs:
+  upload-to-hf:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout benchmark repo
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          pip install huggingface_hub
+      
+      - name: Aggregate leaderboard data
+        env:
+          HF_REPO: ${{ env.HF_REPO }}
+        run: |
+          python scripts/aggregate_for_hf.py
+      
+      - name: Upload to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO: ${{ env.HF_REPO }}
+        run: |
+          python scripts/upload_to_hf.py
+      
+      - name: Summary
+        run: |
+          echo "✅ Uploaded benchmark results to https://huggingface.co/datasets/${{ env.HF_REPO }}"
