@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isagellm-benchmark"
-version = "0.3.0.1"
+version = "0.3.0.2"
 description = "Benchmark Suite & E2E Testing for sageLLM"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,7 +20,7 @@ classifiers = [
 
 dependencies = [
     # Core dependencies (sagellm-protocol is the base)
-    "isagellm-protocol>=0.3.0.0,<0.4.0",
+    "isagellm-protocol>=0.3.0.1,<0.4.0",
     # CLI dependencies
     "click>=8.0.0",
     "rich>=13.0.0",
@@ -40,14 +40,14 @@ dev = [
 openai-client = ["openai>=1.0.0"]
 vllm-client = ["vllm>=0.2.0", "openai>=1.0.0"]
 lmdeploy-client = ["lmdeploy>=0.2.0", "httpx>=0.24.0"]
-sagellm-client = ["isagellm-backend>=0.1.0"]
+sagellm-client = ["isagellm-backend>=0.3.0.3"]
 # All clients
 all-clients = [
     "openai>=1.0.0",
     "vllm>=0.2.0",
     "lmdeploy>=0.2.0",
     "httpx>=0.24.0",
-    "isagellm-backend>=0.1.0",
+    "isagellm-backend>=0.3.0.3",
 ]
 
 [project.scripts]

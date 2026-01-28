@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0.2] - 2026-01-28
+
+### Changed
+- 更新依赖到最新版本：
+  - `isagellm-protocol>=0.3.0.1,<0.4.0`
+  - `isagellm-backend>=0.3.0.3` (在 sagellm-client 和 all-clients extras 中)
+
+## [0.3.0.1] - 2026-01-28
+
 ### Added
 - sageLLM 0.3 release alignment.
 - Ascend engine benchmark demo configuration (Task F - MVP).
