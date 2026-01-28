@@ -1,0 +1,17 @@
+{
+  "run_id": "short_20260128_004",
+  "backend": "cpu",
+  "model": "gpt2",
+  "workload": "short",
+  "date": "20260128",
+  "sequence": 4,
+  "timestamp": "2026-01-28T08:50:01.296595",
+  "model_path": "gpt2",
+  "dataset": "default",
+  "num_samples": 2,
+  "versions": {
+    "sagellm_benchmark": "0.3.0.3",
+    "sagellm_core": "0.3.0.5",
+    "sagellm_backend": "0.3.0.6"
+  }
+}

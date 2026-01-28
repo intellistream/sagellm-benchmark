@@ -1,0 +1,10 @@
+# Ignore all files by default
+*
+
+# But keep specific file types
+!.gitignore
+!*_leaderboard.json
+!config.json
+
+# Keep directory structure
+!*/

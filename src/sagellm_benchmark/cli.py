@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import click
@@ -12,6 +13,150 @@ from rich.console import Console
 from rich.table import Table
 
 console = Console()
+
+
+def normalize_model_name(model_path: str) -> str:
+    """Normalize model path to directory name.
+    
+    Args:
+        model_path: Model path or HuggingFace repo ID
+        
+    Returns:
+        Normalized model name for directory
+        
+    Examples:
+        sshleifer/tiny-gpt2 → tiny-gpt2
+        Qwen/Qwen2-7B-Instruct → Qwen2-7B-Instruct
+        /path/to/model → model
+    """
+    # Remove leading/trailing slashes
+    model_path = model_path.strip("/")
+    
+    # If it's a HuggingFace repo (contains /), take the last part
+    if "/" in model_path:
+        model_path = model_path.split("/")[-1]
+    
+    # If it's a local path, take basename
+    if model_path.startswith("/") or model_path.startswith("./"):
+        model_path = Path(model_path).name
+    
+    # Replace special characters
+    model_path = model_path.replace(" ", "-").replace("_", "-")
+    
+    return model_path
+
+
+def create_output_directory(
+    backend: str,
+    model: str,
+    workload: str,
+    custom_path: str | None = None,
+) -> tuple[Path, dict]:
+    """Create hierarchical output directory.
+    
+    Directory structure: outputs/<backend>/<model>/<workload_YYYYMMDD_NNN>/
+    
+    Args:
+        backend: Backend name (cpu, cuda, vllm, etc.)
+        model: Model name/path
+        workload: Workload type (m1, short, long, stress)
+        custom_path: User-specified output path (optional)
+        
+    Returns:
+        Tuple of (output_path, metadata_dict)
+    """
+    if custom_path:
+        # User specified path - use as-is
+        output_dir = Path(custom_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return output_dir, {"custom_output": True}
+    
+    # Standard hierarchical structure
+    outputs_root = Path("outputs")
+    model_name = normalize_model_name(model)
+    
+    # Create backend/model directory
+    backend_model_dir = outputs_root / backend / model_name
+    backend_model_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Find next sequence number for today
+    today = datetime.now().strftime("%Y%m%d")
+    existing_runs = list(backend_model_dir.glob(f"{workload}_{today}_*"))
+    seq_num = len(existing_runs) + 1
+    
+    # Create run directory: workload_YYYYMMDD_NNN
+    run_id = f"{workload}_{today}_{seq_num:03d}"
+    output_dir = backend_model_dir / run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create/update 'latest' symlink in backend/model directory
+    latest_link = backend_model_dir / "latest"
+    if latest_link.exists() or latest_link.is_symlink():
+        latest_link.unlink()
+    
+    try:
+        # Create relative symlink
+        latest_link.symlink_to(run_id)
+    except OSError:
+        # Windows may not support symlinks
+        pass
+    
+    metadata = {
+        "run_id": run_id,
+        "backend": backend,
+        "model": model_name,
+        "workload": workload,
+        "date": today,
+        "sequence": seq_num,
+    }
+    
+    return output_dir, metadata
+
+
+def save_run_config(
+    output_dir: Path,
+    backend: str,
+    model: str,
+    workload: str,
+    dataset: str,
+    num_samples: int,
+    metadata: dict,
+) -> None:
+    """Save run configuration to config.json.
+    
+    Args:
+        output_dir: Output directory path
+        backend: Backend name
+        model: Model name/path
+        workload: Workload type
+        dataset: Dataset name
+        num_samples: Number of samples
+        metadata: Additional metadata from create_output_directory
+    """
+    try:
+        import importlib.metadata
+        versions = {
+            "sagellm_benchmark": importlib.metadata.version("isagellm-benchmark"),
+            "sagellm_core": importlib.metadata.version("isagellm-core"),
+            "sagellm_backend": importlib.metadata.version("isagellm-backend"),
+        }
+    except Exception:
+        versions = {}
+    
+    config = {
+        **metadata,
+        "timestamp": datetime.now().isoformat(),
+        "model_path": model,  # Original model path
+        "dataset": dataset,
+        "num_samples": num_samples,
+        "versions": versions,
+    }
+    
+    config_file = output_dir / "config.json"
+    with open(config_file, "w") as f:
+        json.dump(config, f, indent=2)
+    
+    console.print(f"[dim]Saved config: {config_file}[/dim]")
 
 
 @click.group()
@@ -44,8 +189,8 @@ def main() -> None:
     "--output",
     "-o",
     type=click.Path(),
-    default="./benchmark_results",
-    help="Output directory for results.",
+    default=None,
+    help="Output directory (default: outputs/<backend>/<model>/<workload_date_seq>/).",
 )
 @click.option(
     "--verbose",
@@ -53,28 +198,73 @@ def main() -> None:
     is_flag=True,
     help="Enable verbose logging.",
 )
+@click.option(
+    "--dataset",
+    type=click.Choice(["default", "sharegpt", "synthetic"]),
+    default="default",
+    help="Dataset to use for prompts (default: hardcoded prompts, sharegpt: HuggingFace ShareGPT).",
+)
+@click.option(
+    "--num-samples",
+    type=int,
+    default=5,
+    help="Number of samples to use from dataset (ignored for 'default').",
+)
 def run(
     workload: str,
     backend: str,
     model: str | None,
     output: str,
     verbose: bool,
+    dataset: str,
+    num_samples: int,
 ) -> None:
     """Run benchmark workloads."""
     console.print("[bold cyan]sageLLM Benchmark[/bold cyan]")
     console.print(f"Workload: {workload}")
     console.print(f"Backend: {backend}")
+    console.print(f"Model: {model}")
+    console.print(f"Dataset: {dataset}")
+    
+    # Create hierarchical output directory
+    output_dir, metadata = create_output_directory(backend, model or "default", workload, output)
+    console.print(f"[bold green]Output:[/bold green] {output_dir}\n")
 
-    # Import engine
+    # Import engine and backend
     try:
-        from sagellm_backend.engine import get_engine_factory
+        from sagellm_core import create_backend, create_engine
+        from sagellm_core.config import BackendConfig, EngineConfig
     except ImportError:
-        console.print("[bold red]Error:[/bold red] isagellm-backend not installed.")
-        console.print("Install with: pip install isagellm-backend")
+        console.print("[bold red]Error:[/bold red] isagellm-core not installed.")
+        console.print("Install with: pip install isagellm-core")
         sys.exit(1)
 
     # Determine workloads to run
     from sagellm_benchmark.workloads import M1_WORKLOADS, WorkloadType
+
+    # Load dataset if needed
+    dataset_instance = None
+    if dataset == "sharegpt":
+        console.print("Loading ShareGPT dataset from HuggingFace...")
+        from sagellm_benchmark.datasets import ShareGPTDataset
+        try:
+            dataset_instance = ShareGPTDataset.from_huggingface(
+                repo_id="anon8231489123/ShareGPT_Vicuna_unfiltered",
+                split="train[:1000]",  # Load first 1000 for speed
+                min_prompt_len=50,
+                max_prompt_len=5000,
+                seed=42,
+            )
+            console.print(f"✓ Loaded {len(dataset_instance)} prompts from ShareGPT")
+        except Exception as e:
+            console.print(f"[bold red]Error loading ShareGPT:[/bold red] {e}")
+            console.print("Falling back to default prompts")
+            dataset_instance = None
+    elif dataset == "synthetic":
+        console.print("Using synthetic ShareGPT-style prompts...")
+        from sagellm_benchmark.datasets import SyntheticShareGPTDataset
+        dataset_instance = SyntheticShareGPTDataset(seed=42)
+        console.print("✓ Synthetic dataset ready")
 
     if workload == "m1":
         workloads = M1_WORKLOADS
@@ -87,18 +277,26 @@ def run(
     else:
         console.print(f"[bold red]Unknown workload:[/bold red] {workload}")
         sys.exit(1)
+    
+    # Override num_requests if using dataset
+    if dataset_instance is not None:
+        for w in workloads:
+            w.num_requests = num_samples
 
-    # Create engine
-    engine_factory = get_engine_factory()
-
+    # Create backend and engine
     if backend == "cpu":
-        from sagellm_backend.engine.cpu import CPUConfig
-
-        config = CPUConfig(
+        # Create backend
+        backend_config = BackendConfig(kind="cpu", device="cpu")
+        backend_provider = create_backend(backend_config)
+        
+        # Create engine
+        engine_config = EngineConfig(
+            kind="cpu",
+            model=model,
             model_path=model,
             device="cpu",
         )
-        engine = engine_factory.create_engine("cpu", config)
+        engine = create_engine(engine_config, backend_provider)
 
     else:
         console.print(f"[bold red]Backend not yet implemented:[/bold red] {backend}")
@@ -111,15 +309,20 @@ def run(
     bench_config = BenchmarkConfig(
         engine=engine,
         workloads=workloads,
-        output_dir=Path(output),
+        output_dir=output_dir,
         verbose=verbose,
+        dataset=dataset_instance,  # Pass dataset to runner
+    )
+    
+    # Save run configuration
+    save_run_config(
+        output_dir, backend, model or "default", workload, dataset, num_samples, metadata
     )
 
     runner = BenchmarkRunner(bench_config)
 
     console.print("\n[bold green]Starting benchmark...[/bold green]")
-    console.print(f"Workloads: {len(workloads)}")
-    console.print(f"Output: {output}\n")
+    console.print(f"Workloads: {len(workloads)}\n")
 
     try:
         results = asyncio.run(runner.run())
@@ -128,7 +331,12 @@ def run(
         console.print("\n[bold green]✓ Benchmark completed![/bold green]\n")
         _display_results(results)
 
-        console.print(f"\n[dim]Results saved to: {output}/[/dim]")
+        console.print(f"\n[bold]Results saved to:[/bold] {output_dir}")
+        
+        # Show latest link if not custom output
+        if not metadata.get("custom_output"):
+            latest_path = output_dir.parent / "latest"
+            console.print(f"[dim]Latest results: {latest_path}[/dim]")
 
     except Exception as e:
         console.print(f"\n[bold red]✗ Benchmark failed:[/bold red] {e}")
