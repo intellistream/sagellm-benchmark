@@ -1,0 +1,26 @@
+# Trigger Website Sync
+# 当 benchmark 仓库的 main 或 main-dev 分支有新的 leaderboard 数据提交时，
+# 自动触发 sagellm-website 仓库的同步 workflow
+
+name: Trigger Website Sync
+
+on:
+  push:
+    branches:
+      - main
+      - main-dev
+    paths:
+      - 'outputs/**/*_leaderboard.json'
+      - 'outputs/**/config.json'
+
+jobs:
+  trigger-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger website sync
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          repository: intellistream/sagellm-website
+          event-type: benchmark-updated
+          client-payload: '{"ref": "${{ github.ref_name }}", "sha": "${{ github.sha }}"}'
