@@ -1,5 +1,14 @@
 name: Trigger Website Sync
 
+# ⚠️ SETUP REQUIRED:
+# 需要在仓库 Settings → Secrets → Actions 添加 PAT_TOKEN
+# 用于触发 sagellm-website 的同步 workflow
+#
+# PAT 创建步骤：
+# 1. GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+# 2. 权限选择：repo (Full control) 或 public_repo (仅公开仓库)
+# 3. 添加到 sagellm-benchmark 仓库的 Secrets，命名为 PAT_TOKEN
+
 on:
   push:
     branches:
@@ -14,15 +23,16 @@ jobs:
     
     steps:
       - name: Trigger website sync workflow
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: intellistream/sagellm-website
-          event-type: benchmark-updated
-          client-payload: |
-            {
-              "repository": "${{ github.repository }}",
-              "branch": "${{ github.ref_name }}",
-              "commit": "${{ github.sha }}",
-              "pusher": "${{ github.actor }}"
-            }
+        run: |
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/intellistream/sagellm-website/dispatches \
+            -d '{"event_type":"benchmark-updated","client_payload":{"repository":"${{ github.repository }}","branch":"${{ github.ref_name }}","commit":"${{ github.sha }}","pusher":"${{ github.actor }}"}}'
+          
+          echo "✅ Triggered sagellm-website sync workflow"
+          echo "📍 Repository: ${{ github.repository }}"
+          echo "🌿 Branch: ${{ github.ref_name }}"
+          echo "📝 Commit: ${{ github.sha }}"
