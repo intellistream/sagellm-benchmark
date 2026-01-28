@@ -45,15 +45,8 @@ htmlcov/
 Thumbs.db
 
 # Demo outputs
-*.json
-!outputs/**/*_leaderboard.json  # Keep leaderboard files for website sync
 *.log
 results/
-
-# But keep outputs structure
-outputs/
-!outputs/**/*_leaderboard.json
-!outputs/**/config.json
 
 # Agent prompts (internal use only)
 .agent-prompts/*
