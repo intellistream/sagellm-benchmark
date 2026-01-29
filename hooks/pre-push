@@ -197,6 +197,9 @@ while read local_ref local_sha remote_ref remote_sha; do
 
                     if [ $upload_status -eq 0 ]; then
                         echo -e "${GREEN}✓ Successfully uploaded to PyPI${NC}"
+                        # sage-pypi-publisher already pushed the version commit
+                        # Exit to prevent duplicate push
+                        exit 0
                     else
                         echo -e "${RED}❌ PyPI upload failed${NC}"
                         echo -e "${YELLOW}Continue pushing to GitHub anyway? [y/n]: ${NC}"
@@ -285,6 +288,9 @@ while read local_ref local_sha remote_ref remote_sha; do
 
                     if sage-pypi-publisher build . --upload --no-dry-run; then
                         echo -e "${GREEN}✓ Successfully uploaded to PyPI${NC}"
+                        # sage-pypi-publisher already pushed the version commit
+                        # Exit to prevent duplicate push
+                        exit 0
                     else
                         echo -e "${RED}❌ PyPI upload failed${NC}"
                         exit 1
