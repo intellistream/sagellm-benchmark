@@ -67,3 +67,6 @@ hf_data/
 
 # ❌ 忽略: 旧的 results/ 目录
 results/
+
+# RFC drafts
+.github/rfc*
