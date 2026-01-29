@@ -26,42 +26,34 @@ sys.path.insert(0, "/home/shuhao/sagellm-protocol/src")
 
 async def main():
     """Run benchmark example with Ascend engine."""
-    from sagellm_core.engines.ascend import AscendEngineConfig, create_ascend_engine
+    from sagellm_core.llm_engine import LLMEngine, LLMEngineConfig
 
     from sagellm_benchmark import run_year1_benchmark
 
-    # Create Ascend engine config
-    config = AscendEngineConfig(
-        engine_id="bench-ascend-001",
+    # Create LLMEngine config for Ascend
+    config = LLMEngineConfig(
         model_path="sshleifer/tiny-gpt2",  # Lightweight model for testing
-        device="ascend:0",  # Primary Ascend device
+        backend_type="ascend",  # Use Ascend backend
         max_new_tokens=64,  # Shorter for faster testing
-        # Ascend-specific settings (if needed)
-        # precision="fp16",  # FP16 precision for Ascend
-        # max_batch_size=8,  # Batch size for throughput
     )
 
     # Check if Ascend is available
     try:
-        engine = create_ascend_engine(config)
+        engine = LLMEngine(config)
         print("🚀 Starting benchmark with Ascend engine...")
-        print(f"   Device: {config.device}")
+        print(f"   Backend: {config.backend_type}")
         backend_available = True
     except Exception as e:
         print(f"⚠️  Ascend backend not available: {e}")
         print("   Falling back to CPU for demo purposes...")
 
         # Fallback to CPU
-        from sagellm_backend.engine.cpu import CPUEngineConfig, create_cpu_engine
-
-        cpu_config = CPUEngineConfig(
-            engine_id="bench-ascend-fallback-cpu",
+        cpu_config = LLMEngineConfig(
             model_path="sshleifer/tiny-gpt2",
-            device="cpu",
+            backend_type="cpu",
             max_new_tokens=64,
-            num_threads=4,
         )
-        engine = create_cpu_engine(cpu_config)
+        engine = LLMEngine(cpu_config)
         backend_available = False
 
     print(f"   Model: {config.model_path}")
