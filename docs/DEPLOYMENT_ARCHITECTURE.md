@@ -227,20 +227,27 @@ if __name__ == "__main__":
 ### 使用示例
 
 ```python
-from sagellm_core.engines.cpu import create_cpu_engine
+from sagellm_core.llm_engine import LLMEngine, LLMEngineConfig
 from sagellm_protocol import Request
 
-# 直接创建引擎（无 Control Plane）
-engine = create_cpu_engine(
-    engine_id="test-001",
+# 直接创建 LLMEngine（统一的硬件抽象引擎）
+config = LLMEngineConfig(
     model_path="gpt2",
+    backend_type="cpu",  # 或 "cuda", "ascend", "auto"
     max_new_tokens=50,
 )
+engine = LLMEngine(config)
 
 await engine.start()
 
 # 直接调用引擎
-request = Request(prompt="Hello!", max_new_tokens=20)
+request = Request(
+    request_id="test-001",
+    trace_id="trace-001",
+    model="gpt2",
+    prompt="Hello!",
+    max_tokens=20,
+)
 result = await engine.generate(request)
 
 print(result.output_text)
