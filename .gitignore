@@ -71,9 +71,6 @@ outputs/**/*_metrics.json
 outputs/**/*.log
 outputs/**/benchmark_summary.json
 
-# ❌ 忽略: hf_data/ 目录（CI 聚合的临时文件）
-hf_data/
-
 # ❌ 忽略: 旧的 results/ 目录
 results/
 
