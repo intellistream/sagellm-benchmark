@@ -26,7 +26,9 @@ HF_BRANCH = "main"
 
 def download_from_hf(filename: str) -> list[dict]:
     """从 HF 下载最新数据（公开，无需 token）"""
-    url = f"https://huggingface.co/datasets/{HF_REPO}/resolve/{HF_BRANCH}/{filename}"
+    # 优先使用 mirror，避免网络超时
+    mirror = "https://hf-mirror.com"
+    url = f"{mirror}/datasets/{HF_REPO}/resolve/{HF_BRANCH}/{filename}"
     print(f"  📥 {url}")
 
     try:

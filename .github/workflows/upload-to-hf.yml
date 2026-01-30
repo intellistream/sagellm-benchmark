@@ -45,6 +45,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO: ${{ env.HF_REPO }}
+          HF_ENDPOINT: https://hf-mirror.com  # 使用国内 mirror 避免超时
         run: |
           python scripts/upload_to_hf.py
       
