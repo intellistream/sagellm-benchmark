@@ -164,6 +164,63 @@ isagellm-benchmark (本仓库 - 独立的 benchmark suite，依赖 umbrella)
 - 依赖 `isagellm` umbrella 包来进行完整的性能测试
 - 不属于核心引擎层级，是测试工具
 
+
+## GitHub Issue Labels 规范
+
+### 必须使用的 Labels
+
+创建 issue 时，**必须**使用以下标准 labels：
+
+#### 1. 仓库关联 Labels（选择相关的仓库）
+- `sagellm-protocol` - 与 protocol 包相关
+- `sagellm-backend` - 与 backend 包相关
+- `sagellm-core` - 与 core 包相关
+- `sagellm-kv-cache` - 与 kv-cache 包相关（KV Transfer）
+- `sagellm-control-plane` - 与 control-plane 包相关
+- `sagellm-gateway` - 与 gateway 包相关
+- `sagellm-compression` - 与 compression 包相关
+
+#### 2. 功能类型 Labels（选择主要类型）
+- `performance` - 性能优化和 benchmark
+- `reliability` - 可靠性和容错
+- `tools` - 开发和调试工具
+- `integration` - 与其他模块集成
+- `testing` - 测试基础设施
+- `documentation` - 文档改进
+- `enhancement` - 新功能增强
+- `bug` - Bug 修复
+
+#### 3. 优先级（可选，使用 title 前缀或 milestone）
+- 在 title 中使用 `[P0]`, `[P1]`, `[P2]` 前缀
+- 或使用 GitHub Milestones 管理优先级
+
+### Issue 命名规范
+
+```
+[类型] 简短描述
+
+示例：
+- [Performance] CollectiveOps 性能 Benchmark 和优化
+- [Integration] 与 sagellm-kv-cache KV Transfer 深度集成
+- [Reliability] 通信容错和重试机制
+- [Tools] 通信诊断和调试工具
+```
+
+### Labels 使用示例
+
+```bash
+# 创建性能优化 issue，关联 sagellm-backend
+gh issue create \
+  --title "[Performance] AllReduce 算法自适应选择" \
+  --label "performance,sagellm-backend,enhancement"
+
+# 创建集成 issue，关联多个仓库
+gh issue create \
+  --title "[Integration] 与 sagellm-kv-cache KV Transfer 深度集成" \
+  --label "integration,sagellm-kv-cache,sagellm-comm"
+```
+
+
 ## 相关文档
 
 - 主文档仓库：https://github.com/intellistream/sagellm-docs
