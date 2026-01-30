@@ -1,0 +1,79 @@
+{
+  "entry_id": "476efca6-5d83-4272-b61d-d42a97353657",
+  "sagellm_version": "0.3.0.7",
+  "config_type": "single_gpu",
+  "hardware": {
+    "vendor": "Intel",
+    "chip_model": "CPU",
+    "chip_count": 1,
+    "interconnect": "None",
+    "chips_per_node": 1,
+    "intra_node_interconnect": "None",
+    "memory_per_chip_gb": null,
+    "total_memory_gb": null
+  },
+  "model": {
+    "name": "gpt2",
+    "parameters": "unknown",
+    "precision": "FP32",
+    "quantization": "None"
+  },
+  "workload": {
+    "input_length": 256,
+    "output_length": 256,
+    "batch_size": 1,
+    "concurrent_requests": 1,
+    "dataset": "default"
+  },
+  "metrics": {
+    "ttft_ms": 1197.425651550293,
+    "tbt_ms": 0.00184858688200363,
+    "tpot_ms": 0.00184858688200363,
+    "throughput_tps": 83.5034772735326,
+    "peak_mem_mb": 954,
+    "error_rate": 0.0,
+    "prefix_hit_rate": 0.0,
+    "kv_used_tokens": 2000,
+    "kv_used_bytes": 512000,
+    "evict_count": 0,
+    "evict_ms": 0.0,
+    "spec_accept_rate": null
+  },
+  "cluster": null,
+  "versions": {
+    "protocol": "0.1.1.0",
+    "backend": "0.3.0.11",
+    "core": "0.3.0.10",
+    "control_plane": "0.1.1.5",
+    "gateway": "0.1.1.5",
+    "kv_cache": "0.1.1.6",
+    "comm": "0.1.1.7",
+    "compression": "0.1.1.7",
+    "benchmark": "0.3.0.7"
+  },
+  "environment": {
+    "os": "Darwin 25.2.0",
+    "python_version": "3.11.14",
+    "pytorch_version": "2.10.0",
+    "cuda_version": null,
+    "cann_version": null,
+    "driver_version": null
+  },
+  "kv_cache_config": {
+    "enabled": true,
+    "eviction_policy": "LRU",
+    "budget_tokens": 8192,
+    "prefix_cache_enabled": true
+  },
+  "metadata": {
+    "submitted_at": "2026-01-30T01:50:46.571030+00:00",
+    "submitter": "sagellm-benchmark automated run",
+    "data_source": "automated-benchmark",
+    "reproducible_cmd": "sagellm-benchmark run --workload m1 --backend cpu --model gpt2",
+    "git_commit": null,
+    "release_date": "2026-01-30",
+    "changelog_url": "https://github.com/intellistream/sagellm/blob/main/CHANGELOG.md",
+    "notes": "Benchmark run: stress_test",
+    "verified": false
+  }
+}
