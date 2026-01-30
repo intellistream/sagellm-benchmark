@@ -10,7 +10,7 @@ on:
       - main
       - main-dev
     paths:
-      - 'outputs/**/*_leaderboard.json'
+      - 'hf_data/*.json'  # 只监听 hf_data/ 的 JSON 文件变化
   
   # 手动触发
   workflow_dispatch:
@@ -35,11 +35,11 @@ jobs:
         run: |
           pip install huggingface_hub
       
-      - name: Aggregate leaderboard data
+      - name: Merge with latest HF data (concurrent-safe)
         env:
           HF_REPO: ${{ env.HF_REPO }}
         run: |
-          python scripts/aggregate_for_hf.py
+          python scripts/merge_and_upload.py
       
       - name: Upload to Hugging Face
         env:
@@ -47,6 +47,14 @@ jobs:
           HF_REPO: ${{ env.HF_REPO }}
         run: |
           python scripts/upload_to_hf.py
+      
+      - name: Cleanup hf_data after upload (keep repo clean)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git rm -rf hf_data/ || true
+          git commit -m "chore: cleanup hf_data after HF upload [skip ci]" || true
+          git push || true
       
       - name: Summary
         run: |

@@ -462,5 +462,43 @@ def _display_markdown(data: dict) -> None:
         )
 
 
+@main.command()
+def aggregate():
+    """聚合本地 benchmark 结果并准备上传到 Hugging Face.
+    
+    工作流程:
+    1. 从 HF 下载最新的公开数据（无需 token）
+    2. 扫描本地 outputs/ 目录的新结果
+    3. 智能合并（去重，选性能更好的）
+    4. 保存到 hf_data/ 目录
+    
+    之后用户可以:
+        git add hf_data/
+        git commit -m "feat: add benchmark results"
+        git push
+    """
+    import subprocess
+    from pathlib import Path
+    
+    # 找到 aggregate_for_hf.py 脚本
+    script_dir = Path(__file__).parent.parent.parent.parent / "scripts"
+    aggregate_script = script_dir / "aggregate_for_hf.py"
+    
+    if not aggregate_script.exists():
+        console.print(f"[red]❌ 未找到聚合脚本: {aggregate_script}[/red]")
+        console.print("[yellow]💡 请确保在 sagellm-benchmark 仓库根目录运行[/yellow]")
+        sys.exit(1)
+    
+    # 运行聚合脚本
+    try:
+        subprocess.run(
+            [sys.executable, str(aggregate_script)],
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]❌ 聚合失败: {e}[/red]")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()

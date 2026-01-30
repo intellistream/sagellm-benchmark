@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 """
-聚合 outputs/ 目录下的所有 benchmark 结果，并与 HF 现有数据合并
+用户本地聚合命令：从 HF 拉取最新数据并与本地结果合并
 
-关键逻辑：
-1. 从 HF 下载现有的 leaderboard 数据
-2. 加载本地 outputs/ 下的新结果
-3. 基于配置 key 去重合并（选择性能较好的结果）
+这是用户在本地运行的命令，用于准备上传到 GitHub 的数据。
+
+工作流程：
+1. 从 HF 下载公开的 leaderboard 数据（无需 token）
+2. 扫描本地 outputs/ 目录的新结果
+3. 智能合并（去重，选性能更好的）
 4. 保存到 hf_data/ 目录
+5. 用户提交 hf_data/ 到 git（不提交 outputs/）
 
 运行方式：
     python scripts/aggregate_for_hf.py
+    或
+    sagellm-benchmark aggregate
     
-HF 仓库：
+HF 仓库（公开访问）：
     https://huggingface.co/datasets/wangyao36/sagellm-benchmark-results
 """
 from __future__ import annotations
@@ -191,6 +196,10 @@ def categorize_results(results: list[dict]) -> tuple[list, list, list]:
 
 
 def main():
+    print("=" * 70)
+    print("📦 sageLLM Benchmark - 本地聚合工具")
+    print("=" * 70)
+    
     # 路径设置
     base_dir = Path(__file__).parent.parent
     outputs_dir = base_dir / "outputs"
@@ -199,19 +208,25 @@ def main():
     # 创建输出目录
     hf_output_dir.mkdir(exist_ok=True)
 
-    # Step 1: 从 HF 下载现有数据
-    print(f"\n📡 从 Hugging Face 下载现有数据...")
+    # Step 1: 从 HF 下载现有数据（公开访问，无需 token）
+    print(f"\n📥 从 Hugging Face 下载最新数据...")
+    print(f"   仓库: https://huggingface.co/datasets/{HF_REPO}")
     existing_single = download_from_hf("leaderboard_single.json")
     existing_multi = download_from_hf("leaderboard_multi.json")
 
     # Step 2: 加载本地新结果
-    print(f"\n📂 从本地 {outputs_dir} 加载新结果...")
+    print(f"\n📂 扫描本地 outputs/ 目录...")
     if not outputs_dir.exists():
-        print(f"  ⚠️ outputs 目录不存在，仅使用 HF 现有数据")
+        print(f"  ⚠️ outputs/ 目录不存在")
+        print(f"  💡 请先运行 benchmark: sagellm-benchmark run --model <model>")
         local_results = []
     else:
         local_results = load_local_results(outputs_dir)
-        print(f"  📊 加载了 {len(local_results)} 条本地结果")
+        if not local_results:
+            print(f"  ⚠️ 未找到任何 *_leaderboard.json 文件")
+            print(f"  💡 请先运行 benchmark 生成结果")
+        else:
+            print(f"  ✓ 找到 {len(local_results)} 条本地结果")
 
     # Step 3: 分类本地结果
     if local_results:
@@ -219,18 +234,20 @@ def main():
             local_results
         )
         local_single = local_single_chip + local_multi_chip
+        print(f"  └─ 单机: {len(local_single)} 条, 多机: {len(local_multi_node)} 条")
     else:
         local_single = []
         local_multi_node = []
 
     # Step 4: 合并数据
-    print(f"\n🔀 合并数据...")
+    print(f"\n🔀 智能合并数据...")
     print(f"  Single (单机单卡+多卡):")
     merged_single = merge_results(existing_single, local_single)
     print(f"  Multi (多机多卡):")
     merged_multi = merge_results(existing_multi, local_multi_node)
 
     # Step 5: 保存到 JSON 文件
+    print(f"\n💾 保存到 hf_data/ 目录...")
     single_file = hf_output_dir / "leaderboard_single.json"
     multi_file = hf_output_dir / "leaderboard_multi.json"
 
@@ -240,11 +257,24 @@ def main():
     with open(multi_file, "w", encoding="utf-8") as f:
         json.dump(merged_multi, f, indent=2, ensure_ascii=False)
 
-    # 统计信息
-    print(f"\n✅ 聚合完成！")
-    print(f"  📄 {single_file.name}: {len(merged_single)} 条")
-    print(f"  📄 {multi_file.name}: {len(merged_multi)} 条")
-    print(f"\n💡 下一步: 运行 scripts/upload_to_hf.py 上传到 HF")
+    print(f"  ✓ {single_file} ({len(merged_single)} 条)")
+    print(f"  ✓ {multi_file} ({len(merged_multi)} 条)")
+
+    # 友好提示
+    print(f"\n" + "=" * 70)
+    print(f"✅ 聚合完成！")
+    print(f"=" * 70)
+    print(f"\n📌 下一步操作：")
+    print(f"  1. 提交聚合数据到 git:")
+    print(f"     git add hf_data/")
+    print(f"     git commit -m 'feat: add benchmark results'")
+    print(f"     git push")
+    print(f"\n  2. GitHub Actions 会自动:")
+    print(f"     - 与 HF 最新数据合并（解决并发冲突）")
+    print(f"     - 上传到 Hugging Face")
+    print(f"     - 清理 hf_data/ 保持仓库轻量")
+    print(f"\n💡 提示: outputs/ 目录不会被提交（在 .gitignore 中）")
+    print(f"=" * 70)
 
 
 if __name__ == "__main__":
