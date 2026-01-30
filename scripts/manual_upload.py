@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
 """
-手动上传 Benchmark 结果到 Hugging Face
+手动上传 Benchmark 结果到 Hugging Face（可选的高级功能）
+
+⚠️ 注意：这是可选功能！推荐使用标准流程（aggregate → git push → Actions 自动上传）
+
+适用场景：
+- 核心团队成员有 HF_TOKEN，想立即上传
+- 测试上传流程
+- GitHub Actions 故障时的降级方案
+
+标准流程（推荐）：
+    sagellm-benchmark aggregate
+    git add hf_data/ && git commit && git push
+    # GitHub Actions 会自动上传
+
+手动上传（本脚本）：
+    export HF_TOKEN=hf_xxx
+    python scripts/manual_upload.py
 
 功能：
-1. 从 HF 拉取现有数据
-2. 与本地 outputs/ 数据合并（相同配置保留更好的结果）
-3. 推送到 HF
-
-使用方法：
-    # 设置 HF_TOKEN 环境变量
-    export HF_TOKEN=hf_xxx
-    
-    # 运行脚本
-    python scripts/manual_upload.py
-    
-    # 或一行命令
-    HF_TOKEN=hf_xxx python scripts/manual_upload.py
+1. 从 HF 拉取最新数据（公开访问）
+2. 与 hf_data/ 或 outputs/ 数据合并（并发安全）
+3. 上传到 HF（需要 HF_TOKEN）
 """
 from __future__ import annotations
 
@@ -241,55 +247,82 @@ def upload_to_hf(token: str) -> None:
 # =============================================================================
 
 def main():
-    print("=" * 60)
-    print("📦 sagellm-benchmark 手动上传到 Hugging Face")
-    print("=" * 60)
+    print("=" * 70)
+    print("📦 sagellm-benchmark 手动上传到 Hugging Face（高级功能）")
+    print("=" * 70)
+    print("\n⚠️  提示: 推荐使用标准流程（aggregate → git push → Actions）")
+    print("   只有在以下情况才需要手动上传:")
+    print("   - 你有 HF_TOKEN 且想立即上传")
+    print("   - 测试上传流程")
+    print("   - GitHub Actions 故障时的降级方案\n")
 
     # 检查 token
     token = os.environ.get("HF_TOKEN")
     if not token:
-        print("\n❌ 错误: HF_TOKEN 环境变量未设置")
+        print("❌ 错误: HF_TOKEN 环境变量未设置")
         print("\n请设置 HF_TOKEN:")
         print("  export HF_TOKEN=hf_xxx")
         print("\n或者:")
         print("  HF_TOKEN=hf_xxx python scripts/manual_upload.py")
+        print("\n💡 如果你没有 HF_TOKEN，请使用标准流程:")
+        print("   1. sagellm-benchmark aggregate")
+        print("   2. git add hf_data/ && git commit && git push")
         sys.exit(1)
 
-    print(f"\n✅ HF_TOKEN 已设置")
+    print(f"✅ HF_TOKEN 已设置")
     print(f"📍 HF 仓库: {HF_REPO}")
 
-    # Step 1: 从 HF 拉取现有数据
-    print("\n" + "-" * 60)
-    print("Step 1: 从 Hugging Face 拉取现有数据")
-    print("-" * 60)
+    # Step 1: 从 HF 拉取现有数据（并发安全）
+    print("\n" + "-" * 70)
+    print("Step 1: 从 Hugging Face 拉取最新数据（并发安全）")
+    print("-" * 70)
     existing_single = download_from_hf("leaderboard_single.json")
     existing_multi = download_from_hf("leaderboard_multi.json")
 
-    # Step 2: 加载本地数据
-    print("\n" + "-" * 60)
-    print("Step 2: 加载本地 outputs/ 数据")
-    print("-" * 60)
-    local_results = load_local_results()
-    print(f"\n  📊 共加载 {len(local_results)} 条本地结果")
+    # Step 2: 优先使用 hf_data/，降级到 outputs/
+    print("\n" + "-" * 70)
+    print("Step 2: 加载本地数据")
+    print("-" * 70)
+    
+    # 优先使用 hf_data/（如果已经运行过 aggregate）
+    if HF_DATA_DIR.exists():
+        single_file = HF_DATA_DIR / "leaderboard_single.json"
+        multi_file = HF_DATA_DIR / "leaderboard_multi.json"
+        
+        if single_file.exists() and multi_file.exists():
+            print("  ✓ 发现 hf_data/ 目录（优先使用）")
+            with open(single_file, encoding="utf-8") as f:
+                local_single = json.load(f)
+            with open(multi_file, encoding="utf-8") as f:
+                local_multi = json.load(f)
+            print(f"  📊 Single: {len(local_single)} 条")
+            print(f"  📊 Multi: {len(local_multi)} 条")
+        else:
+            print("  ⚠️  hf_data/ 存在但文件不完整，降级到 outputs/")
+            local_results = load_local_results()
+            local_single, local_multi = categorize_results(local_results)
+    else:
+        print("  📂 未找到 hf_data/，扫描 outputs/")
+        local_results = load_local_results()
+        print(f"  📊 共加载 {len(local_results)} 条本地结果")
+        local_single, local_multi = categorize_results(local_results)
 
-    if not local_results and not existing_single and not existing_multi:
+    if not local_single and not local_multi and not existing_single and not existing_multi:
         print("\n⚠️ 没有任何数据可上传")
         sys.exit(0)
 
-    # Step 3: 分类并合并
-    print("\n" + "-" * 60)
-    print("Step 3: 智能合并数据")
-    print("-" * 60)
+    # Step 3: 智能合并（并发安全）
+    print("\n" + "-" * 70)
+    print("Step 3: 智能合并（并发安全，基于 HF 最新数据）")
+    print("-" * 70)
 
-    local_single, local_multi = categorize_results(local_results)
-
-    print(f"\n  Single (单机):")
+    print(f"\n  Single (单机单卡+多卡):")
     merged_single = merge_results(existing_single, local_single)
 
-    print(f"\n  Multi (多机):")
+    print(f"\n  Multi (多机多卡):")
     merged_multi = merge_results(existing_multi, local_multi)
 
-    # 保存到本地
+    # 保存合并结果到本地
     HF_DATA_DIR.mkdir(exist_ok=True)
 
     single_file = HF_DATA_DIR / "leaderboard_single.json"
@@ -301,20 +334,21 @@ def main():
     with open(multi_file, "w", encoding="utf-8") as f:
         json.dump(merged_multi, f, indent=2, ensure_ascii=False)
 
-    print(f"\n  💾 已保存到 hf_data/")
+    print(f"\n  💾 已保存合并结果到 hf_data/")
     print(f"     - {single_file.name}: {len(merged_single)} 条")
     print(f"     - {multi_file.name}: {len(merged_multi)} 条")
 
     # Step 4: 上传到 HF
-    print("\n" + "-" * 60)
+    print("\n" + "-" * 70)
     print("Step 4: 上传到 Hugging Face")
-    print("-" * 60)
+    print("-" * 70)
     upload_to_hf(token)
 
     # 完成
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 70)
     print("✅ 完成！")
     print(f"🔗 https://huggingface.co/datasets/{HF_REPO}")
+    print("=" * 70)
     print("=" * 60)
 
 

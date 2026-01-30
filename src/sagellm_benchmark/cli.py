@@ -230,10 +230,9 @@ def run(
     output_dir, metadata = create_output_directory(backend, model or "default", workload, output)
     console.print(f"[bold green]Output:[/bold green] {output_dir}\n")
 
-    # Import engine and backend
+    # Import LLMEngine
     try:
-        from sagellm_core import create_backend, create_engine
-        from sagellm_core.config import BackendConfig, EngineConfig
+        from sagellm_core import LLMEngine, LLMEngineConfig
     except ImportError:
         console.print("[bold red]Error:[/bold red] isagellm-core not installed.")
         console.print("Install with: pip install isagellm-core")
@@ -283,23 +282,41 @@ def run(
         for w in workloads:
             w.num_requests = num_samples
 
-    # Create backend and engine
+    # Create engine using LLMEngine
     if backend == "cpu":
-        # Create backend
-        backend_config = BackendConfig(kind="cpu", device="cpu")
-        backend_provider = create_backend(backend_config)
+        try:
+            from sagellm_core import LLMEngine, LLMEngineConfig
+        except ImportError:
+            console.print("[bold red]Error:[/bold red] isagellm-core not installed.")
+            console.print("Install with: pip install isagellm-core")
+            sys.exit(1)
+
+        # Create LLMEngine config
+        engine_config = LLMEngineConfig(
+            model_path=model,
+            backend_type="cpu",  # Use CPU backend
+            comm_type="gloo",  # Not used in single-device mode
+            max_batch_size=32,
+            max_model_len=4096,
+            max_new_tokens=128,
+            trust_remote_code=True,
+        )
         
         # Create engine
-        engine_config = EngineConfig(
-            kind="cpu",
-            model=model,
-            model_path=model,
-            device="cpu",
-        )
-        engine = create_engine(engine_config, backend_provider)
+        engine = LLMEngine(engine_config)
+        
+        # Start engine
+        console.print(f"[dim]Starting engine with model: {model}[/dim]")
+        asyncio.run(engine.start())
+        console.print("[green]✓[/green] Engine started\n")
 
-    else:
+    elif backend in ["lmdeploy", "vllm"]:
         console.print(f"[bold red]Backend not yet implemented:[/bold red] {backend}")
+        console.print("Available: cpu")
+        console.print("[dim]lmdeploy and vllm support coming soon[/dim]")
+        sys.exit(1)
+    else:
+        console.print(f"[bold red]Unknown backend:[/bold red] {backend}")
         console.print("Available: cpu")
         sys.exit(1)
 
