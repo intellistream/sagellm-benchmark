@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0.0] - 2026-01-30
+
+### Changed
+- 版本号升级至 0.4.0.0，与核心包保持一致
+- 更新依赖：
+  - `isagellm-protocol>=0.4.0.0,<0.5.0`
+  - `isagellm-core>=0.4.0.0,<0.5.0`
+  - `isagellm-backend>=0.4.0.1,<0.5.0`
+
 ## [0.3.0.3] - 2026-01-28
 
 ### Changed
