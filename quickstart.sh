@@ -59,6 +59,12 @@ if [ -d "$HOOKS_DIR" ]; then
         cp "$TEMPLATE_DIR/pre-push" "$HOOKS_DIR/pre-push"
         chmod +x "$HOOKS_DIR/pre-push"
         echo -e "${GREEN}✓ Installed pre-push hook${NC}"
+    fi
+
+    if [ -f "$TEMPLATE_DIR/post-commit" ]; then
+        cp "$TEMPLATE_DIR/post-commit" "$HOOKS_DIR/post-commit"
+        chmod +x "$HOOKS_DIR/post-commit"
+        echo -e "${GREEN}✓ Installed post-commit hook${NC}"
     else
         echo -e "${YELLOW}⚠  pre-push template not found, skipping${NC}"
     fi
