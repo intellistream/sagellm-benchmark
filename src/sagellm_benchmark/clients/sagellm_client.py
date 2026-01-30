@@ -1,11 +1,10 @@
-"""Client for native sagellm-backend engines.
+"""Client for native sagellm engines.
 
-This client directly uses sagellm-backend's Engine classes:
-- CPUEngine (for CPU mode)
-- CUDAEngine (for NVIDIA GPUs)
-- AscendEngine (for Huawei Ascend NPUs)
+This client directly uses sagellm-core's LLMEngine:
+- LLMEngine (new vLLM v1 style, hardware-agnostic)
+- BaseEngine (legacy, still supported)
 
-Provides the most complete metrics since it's the native backend.
+Provides the most complete metrics since it's the native engine.
 """
 
 from __future__ import annotations
@@ -22,11 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 class SageLLMClient(BenchmarkClient):
-    """Client for native sagellm-backend engines.
+    """Client for native sagellm engines.
+
+    Supports both new (LLMEngine) and legacy (BaseEngine) architectures.
 
     Attributes:
-        engine: sagellm-backend Engine instance.
-        engine_type: Engine type (cpu/cuda/ascend).
+        engine: sagellm Engine instance.
+        engine_type: Engine type.
     """
 
     def __init__(
@@ -37,31 +38,38 @@ class SageLLMClient(BenchmarkClient):
         """Initialize SageLLM client.
 
         Args:
-            engine: sagellm-backend Engine instance (already started).
+            engine: sagellm Engine instance (LLMEngine or BaseEngine).
             timeout: Request timeout (seconds).
 
         Raises:
-            ImportError: If sagellm-backend not installed.
+            ImportError: If sagellm-core not installed.
         """
         super().__init__(name="sagellm", timeout=timeout)
 
+        # Try to import from sagellm_core (new architecture)
         try:
-            from sagellm_backend import BaseEngine
+            from sagellm_core import LLMEngine, BaseEngine
         except ImportError:
             raise ImportError(
-                "sagellm-backend not installed. Install with: pip install isagellm-backend"
+                "sagellm-core not installed. Install with: pip install isagellm-core"
             )
 
-        if not isinstance(engine, BaseEngine):
-            raise TypeError(f"Expected BaseEngine, got {type(engine)}")
+        # Check if it's new or legacy engine
+        if isinstance(engine, LLMEngine):
+            self.engine_type = "llm_engine"
+            self.is_legacy = False
+        elif isinstance(engine, BaseEngine):
+            self.engine_type = "base_engine"
+            self.is_legacy = True
+        else:
+            raise TypeError(f"Expected LLMEngine or BaseEngine, got {type(engine)}")
 
         self.engine = engine
-        self.engine_type = engine.__class__.__name__.lower().replace("engine", "")
 
         logger.info(f"SageLLM client initialized: engine_type={self.engine_type}")
 
     async def generate(self, request: BenchmarkRequest) -> BenchmarkResult:
-        """Execute request via sagellm-backend engine.
+        """Execute request via sagellm engine.
 
         Args:
             request: Benchmark request.
@@ -95,8 +103,20 @@ class SageLLMClient(BenchmarkClient):
                 stream=request.stream,
             )
 
-            # Execute via engine
-            response = await self.engine.execute(protocol_request)
+            # Execute via engine (adapt to engine type)
+            if self.is_legacy:
+                # BaseEngine has execute() method
+                response = await self.engine.execute(protocol_request)
+            else:
+                # LLMEngine has generate() method
+                response = await self.engine.generate(
+                    prompt=protocol_request.prompt,
+                    max_tokens=protocol_request.max_tokens,
+                    temperature=protocol_request.temperature,
+                    top_p=protocol_request.top_p,
+                    request_id=protocol_request.request_id,
+                    trace_id=protocol_request.trace_id,
+                )
 
             # Extract metrics from response
             if hasattr(response, "metrics") and response.metrics:
@@ -119,10 +139,20 @@ class SageLLMClient(BenchmarkClient):
                     spec_accept_rate=0.0,
                 )
 
-            # Extract output
-            output_text = response.text if hasattr(response, "text") else ""
-            output_tokens = response.output_tokens if hasattr(response, "output_tokens") else 0
-            prompt_tokens = response.prompt_tokens if hasattr(response, "prompt_tokens") else 0
+            # Extract output (adapt field names)
+            output_text = ""
+            if hasattr(response, "output_text"):
+                output_text = response.output_text
+            elif hasattr(response, "text"):
+                output_text = response.text
+
+            output_tokens_count = 0
+            if hasattr(response, "output_tokens") and response.output_tokens:
+                output_tokens_count = len(response.output_tokens) if isinstance(response.output_tokens, list) else response.output_tokens
+
+            prompt_tokens = 0
+            if hasattr(response, "prompt_tokens"):
+                prompt_tokens = response.prompt_tokens
 
             return BenchmarkResult(
                 request_id=request.request_id,
@@ -130,7 +160,7 @@ class SageLLMClient(BenchmarkClient):
                 error=None,
                 metrics=metrics,
                 output_text=output_text,
-                output_tokens=output_tokens,
+                output_tokens=output_tokens_count,
                 prompt_tokens=prompt_tokens,
             )
 

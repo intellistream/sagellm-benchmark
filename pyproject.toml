@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isagellm-benchmark"
-version = "0.3.0.3"
+version = "0.4.0.2"
 description = "Benchmark Suite & E2E Testing for sageLLM"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,9 +20,9 @@ classifiers = [
 
 dependencies = [
     # Core sagellm dependencies
-    "isagellm-protocol>=0.3.0.1,<0.4.0",
-    "isagellm-core>=0.3.0.5,<0.4.0",        # Engine creation and execution
-    "isagellm-backend>=0.3.0.6,<0.4.0",     # Backend providers (CPU/CUDA/etc)
+    "isagellm-protocol>=0.4.0.0,<0.5.0",
+    "isagellm-core>=0.4.0.0,<0.5.0",        # Engine creation and execution
+    "isagellm-backend>=0.4.0.1,<0.5.0",     # Backend providers (CPU/CUDA/etc)
     # CLI dependencies
     "click>=8.0.0",
     "rich>=13.0.0",

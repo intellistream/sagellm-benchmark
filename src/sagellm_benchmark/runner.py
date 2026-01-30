@@ -130,7 +130,7 @@ class BenchmarkRunner:
                 request = Request(
                     request_id=f"{workload.name}-{i:03d}",
                     trace_id=f"benchmark-{workload.name}",
-                    model=self.config.engine._cpu_config.model_path,
+                    model=self.config.engine.config.model_path,
                     prompt=prompts[i],
                     max_tokens=workload.max_tokens,
                     temperature=workload.temperature,
@@ -157,7 +157,7 @@ class BenchmarkRunner:
                 request = Request(
                     request_id=f"{workload.name}-{i:03d}",
                     trace_id=f"benchmark-{workload.name}",
-                    model=self.config.engine._cpu_config.model_path,
+                    model=self.config.engine.config.model_path,
                     prompt=prompts[i],
                     max_tokens=workload.max_tokens,
                     temperature=workload.temperature,

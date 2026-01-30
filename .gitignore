@@ -47,6 +47,15 @@ Thumbs.db
 # Logs
 *.log
 
+# Benchmark outputs (local only, not committed)
+# Users should run 'sagellm-benchmark aggregate' to generate hf_data/
+outputs/
+
+# HF data (committed for upload)
+# These are aggregated leaderboard files ready for HF upload
+# Will be auto-deleted by Actions after successful upload
+!hf_data/
+
 # Agent prompts (internal use only)
 .agent-prompts/*
 
@@ -62,8 +71,8 @@ outputs/**/*_metrics.json
 outputs/**/*.log
 outputs/**/benchmark_summary.json
 
-# ❌ 忽略: hf_data/ 目录（CI 聚合的临时文件）
-hf_data/
-
 # ❌ 忽略: 旧的 results/ 目录
 results/
+
+# RFC drafts
+.github/rfc*

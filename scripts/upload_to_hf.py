@@ -56,10 +56,15 @@ def main() -> None:
         print("❌ HF_TOKEN 环境变量未设置")
         exit(1)
 
-    login(token=token)
-
-    # 初始化 API
-    api = HfApi()
+    # 配置 HF endpoint（支持 mirror）
+    hf_endpoint = os.environ.get("HF_ENDPOINT", "https://hf-mirror.com")
+    print(f"📡 Using HF endpoint: {hf_endpoint}")
+    
+    # 设置环境变量（huggingface_hub 会读取）
+    os.environ["HF_ENDPOINT"] = hf_endpoint
+    
+    # 初始化 API（使用配置的 endpoint）
+    api = HfApi(endpoint=hf_endpoint, token=token)
 
     # 确保 repo 存在
     ensure_repo_exists(api, HF_REPO)

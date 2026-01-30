@@ -33,13 +33,27 @@ jobs:
   # Job 1: Code quality with pre-commit (MANDATORY APPROACH A)
   code-quality:
     name: Code Quality (pre-commit)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Need full history for diff
+
+      - name: Configure China mirrors
+        run: |
+          # Configure pip to use Tsinghua mirror
+          mkdir -p ~/.pip
+          cat > ~/.pip/pip.conf << EOF
+          [global]
+          index-url = https://pypi.tuna.tsinghua.edu.cn/simple
+          trusted-host = pypi.tuna.tsinghua.edu.cn
+          EOF
+
+          # Configure HuggingFace mirror
+          export HF_ENDPOINT=https://hf-mirror.com
+          echo "HF_ENDPOINT=https://hf-mirror.com" >> $GITHUB_ENV
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -72,10 +86,56 @@ jobs:
         if: github.event_name != 'pull_request'
         run: pre-commit run --all-files
 
+  # ─────────────────────────────────────────────────────────────────
+  # Version Check - Ensure tool versions match between local and CI
+  # ─────────────────────────────────────────────────────────────────
+  version-check:
+    name: Check Tool Versions
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Check ruff version consistency
+        run: |
+          # Get local ruff version
+          LOCAL_RUFF=$(ruff --version | awk '{print $2}')
+          echo "Local ruff: $LOCAL_RUFF"
+
+          # Get pre-commit config ruff version
+          if [ -f .pre-commit-config.yaml ]; then
+            PRECOMMIT_RUFF=$(grep -A 2 'ruff-pre-commit' .pre-commit-config.yaml | grep 'rev:' | awk '{print $2}' | sed 's/v//')
+            echo "Pre-commit ruff: v$PRECOMMIT_RUFF"
+
+            # Compare versions
+            if [ "$LOCAL_RUFF" != "$PRECOMMIT_RUFF" ]; then
+              echo "::error::❌ Version mismatch! Local ruff ($LOCAL_RUFF) != pre-commit ruff (v$PRECOMMIT_RUFF)"
+              echo ""
+              echo "To fix this, run:"
+              echo "  pip install ruff==$PRECOMMIT_RUFF"
+              echo "Or update .pre-commit-config.yaml:"
+              echo "  pre-commit autoupdate"
+              exit 1
+            fi
+
+            echo "✅ Versions match: $LOCAL_RUFF"
+          else
+            echo "⚠️  No .pre-commit-config.yaml found, skipping check"
+          fi
+
   # Job 2: Unit tests with coverage
   test:
     name: Test (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: code-quality  # Run after code quality checks pass
     strategy:
       fail-fast: false
@@ -116,7 +176,7 @@ jobs:
   # Job 3: Build verification
   build:
     name: Build Package
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
