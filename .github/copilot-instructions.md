@@ -164,6 +164,111 @@ isagellm-benchmark (本仓库 - 独立的 benchmark suite，依赖 umbrella)
 - 依赖 `isagellm` umbrella 包来进行完整的性能测试
 - 不属于核心引擎层级，是测试工具
 
+
+## GitHub Issue Labels 规范
+
+### 必须使用的 Labels
+
+创建 issue 时，**必须**使用以下标准 labels：
+
+#### 1. 仓库关联 Labels（选择相关的仓库）
+- `sagellm-protocol` - 与 protocol 包相关
+- `sagellm-backend` - 与 backend 包相关
+- `sagellm-core` - 与 core 包相关
+- `sagellm-kv-cache` - 与 kv-cache 包相关（KV Transfer）
+- `sagellm-control-plane` - 与 control-plane 包相关
+- `sagellm-gateway` - 与 gateway 包相关
+- `sagellm-compression` - 与 compression 包相关
+
+#### 2. 功能类型 Labels（选择主要类型）
+- `performance` - 性能优化和 benchmark
+- `reliability` - 可靠性和容错
+- `tools` - 开发和调试工具
+- `integration` - 与其他模块集成
+- `testing` - 测试基础设施
+- `documentation` - 文档改进
+- `enhancement` - 新功能增强
+- `bug` - Bug 修复
+
+#### 3. 优先级（可选，使用 title 前缀或 milestone）
+- 在 title 中使用 `[P0]`, `[P1]`, `[P2]` 前缀
+- 或使用 GitHub Milestones 管理优先级
+
+### Issue 命名规范
+
+```
+[类型] 简短描述
+
+示例：
+- [Performance] CollectiveOps 性能 Benchmark 和优化
+- [Integration] 与 sagellm-kv-cache KV Transfer 深度集成
+- [Reliability] 通信容错和重试机制
+- [Tools] 通信诊断和调试工具
+```
+
+### Labels 使用示例
+
+```bash
+# 创建性能优化 issue，关联 sagellm-backend
+gh issue create \
+  --title "[Performance] AllReduce 算法自适应选择" \
+  --label "performance,sagellm-backend,enhancement"
+
+# 创建集成 issue，关联多个仓库
+gh issue create \
+  --title "[Integration] 与 sagellm-kv-cache KV Transfer 深度集成" \
+  --label "integration,sagellm-kv-cache,sagellm-comm"
+```
+
+
+## 🔄 贡献工作流程（强制）
+
+### 工作流程步骤
+
+**必须严格遵循以下步骤，不允许跳过：**
+
+1. **创建 Issue** - 描述问题/需求/改进
+   ```bash
+   gh issue create \
+     --title "[Category] 简短描述" \
+     --label "bug,enhancement,sagellm-benchmark" \
+     --body "详细描述"
+   ```
+   - **必须** 添加相关的 label
+   - **必须** 描述清楚问题/需求
+   - **必须** 如果是 bug，附加复现步骤
+
+2. **开发修复** - 在本地分支解决问题
+   ```bash
+   git fetch origin main-dev
+   git checkout -b fix/#123-short-description origin/main-dev
+
+   # 进行开发，确保测试通过
+   ruff format .
+   ruff check . --fix
+   pytest -v
+   ```
+   - **必须** 从 `main-dev` 分支创建开发分支
+   - **必须** 分支名包含 issue 号：`fix/#123-xxx` 或 `feature/#456-xxx`
+   - **必须** 在提交前通过所有测试和 lint 检查
+   - **必须** 更新 CHANGELOG.md
+
+3. **发起 Pull Request** - 提交代码供审查
+   ```bash
+   git push origin fix/#123-short-description
+   gh pr create \
+     --base main-dev \
+     --head fix/#123-short-description \
+     --title "Fix: [简短描述]"
+   ```
+   - **必须** 针对 `main-dev` 分支发起 PR
+   - **必须** 代码必须通过所有 CI 检查
+
+4. **代码审查与合并** - 等待审批后合并到 main-dev
+   - **必须** 至少一名维护者审批才能合并
+   - **必须** CI 检查全部通过
+   - **必须** 合并到 `main-dev` 分支
+
 ## 相关文档
 
 - 主文档仓库：https://github.com/intellistream/sagellm-docs
