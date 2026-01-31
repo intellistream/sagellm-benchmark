@@ -88,16 +88,31 @@ Metrics include latency, throughput, memory, and error rates. See
 - [docs/CLIENTS_GUIDE.md](docs/CLIENTS_GUIDE.md) - 客户端选择指南
 - [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md) - 部署架构说明（HTTP API vs 直连）
 
-## Development
+## 🔄 贡献指南
 
-```bash
-git clone git@github.com:intellistream/sagellm-benchmark.git
-cd sagellm-benchmark
-pip install -e ".[dev]"
-pytest tests/ -v
-ruff check .
-ruff format .
-```
+请遵循以下工作流程：
+
+1. **创建 Issue** - 描述问题/需求
+   ```bash
+   gh issue create --title "[Bug] 描述" --label "bug,sagellm-benchmark"
+   ```
+
+2. **开发修复** - 在本地 `fix/#123-xxx` 分支解决
+   ```bash
+   git checkout -b fix/#123-xxx origin/main-dev
+   # 开发、测试...
+   pytest -v
+   ruff format . && ruff check . --fix
+   ```
+
+3. **发起 PR** - 提交到 `main-dev` 分支
+   ```bash
+   gh pr create --base main-dev --title "Fix: 描述" --body "Closes #123"
+   ```
+
+4. **合并** - 审批后合并到 `main-dev`
+
+更多详情见 [.github/copilot-instructions.md](.github/copilot-instructions.md)
 
 ## License
 
