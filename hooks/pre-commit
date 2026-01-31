@@ -59,6 +59,26 @@ else
     echo -e "${GREEN}✓ No mock usage${NC}"
 fi
 
+# Check for forbidden requirements.txt files
+echo -e "${YELLOW}Checking for requirements.txt files...${NC}"
+requirements_files=()
+while read -r file; do
+    if [[ "$file" == *requirements*.txt ]]; then
+        requirements_files+=("$file")
+    fi
+done <<< "$staged_files"
+
+if [ ${#requirements_files[@]} -gt 0 ]; then
+    echo -e "${RED}✗ requirements.txt files are forbidden in sageLLM projects!${NC}"
+    echo -e "${RED}  All dependencies must be declared in pyproject.toml${NC}"
+    echo -e "${YELLOW}  Found:${NC}"
+    printf '  - %s\n' "${requirements_files[@]}"
+    echo -e "${YELLOW}  Please use pyproject.toml [project.dependencies] instead.${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✓ No requirements.txt files${NC}"
+fi
+
 # Check for large files (>5MB)
 echo -e "${YELLOW}Checking for large files...${NC}"
 max_size=5242880
