@@ -22,30 +22,49 @@ New here? See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide.
 - One-command benchmark runner
 - Extensible backend support
 
+## Dependencies
+
+- **isagellm-protocol** (>=0.4.0.0)
+- **isagellm-core** (>=0.4.0.0)
+- **isagellm-backend** (>=0.4.0.1)
+
 ## Installation
 
 ```bash
 pip install isagellm-benchmark
 ```
 
+For specific backend support:
+
+```bash
+# With vLLM support
+pip install isagellm-benchmark[vllm-client]
+
+# With LMDeploy support
+pip install isagellm-benchmark[lmdeploy-client]
+
+# With OpenAI/Gateway support
+pip install isagellm-benchmark[openai-client]
+```
+
 ## Quick Start
 
 ```bash
-# Run all workloads and generate reports
-./run_benchmark.sh
+# Run all workloads (Short, Long, Stress) uses CPU backend by default
+sagellm-benchmark run --workload m1 --backend cpu --output ./benchmark_results
 
-# Specify a custom output directory
-./run_benchmark.sh ./my_results
+# Generate a markdown report
+sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format markdown
 ```
 
 CLI examples:
 
 ```bash
 # Run the full suite with the CPU backend
-sagellm-benchmark run --workload year1 --backend cpu
+sagellm-benchmark run --workload m1 --backend cpu
 
 # Run with a CPU model
-sagellm-benchmark run --workload year1 --backend cpu --model gpt2
+sagellm-benchmark run --workload m1 --backend cpu --model sshleifer/tiny-gpt2
 
 # Run a single workload
 sagellm-benchmark run --workload short --backend cpu
@@ -56,9 +75,10 @@ sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --fo
 
 ## Workloads
 
-- **Short**: 128 prompt → 128 output (5 requests)
-- **Long**: 200 prompt → 200 output (3 requests)
-- **Stress**: 256 prompt → 256 output (10 concurrent requests)
+- **m1** (Year 1 Demo): Full suite of predefined workloads (Short + Long + Stress)
+- **short**: 128 prompt → 128 output (5 requests)
+- **long**: 200 prompt → 200 output (3 requests)
+- **stress**: 256 prompt → 256 output (10 concurrent requests)
 
 ## Outputs
 
@@ -79,7 +99,36 @@ Metrics include latency, throughput, memory, and error rates. See
 ## Backends
 
 - **cpu**: CPU inference via HuggingFace Transformers (requires `--model`)
-- **planned**: lmdeploy, vllm
+- **planned**: lmdeploy, vllm (Clients implemented, CLI integration pending)
+
+## Development
+
+### Setup
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/intellistream/sagellm-benchmark.git
+cd sagellm-benchmark
+
+# 2. Install in editable mode with dev dependencies
+pip install -e .[dev,all-clients]
+```
+
+### Running Tests
+
+```bash
+pytest tests/
+```
+
+### Code Quality
+
+```bash
+# Linting
+ruff check .
+
+# Type checking
+mypy src/
+```
 
 ## Documentation
 
