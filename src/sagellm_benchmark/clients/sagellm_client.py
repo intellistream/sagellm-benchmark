@@ -38,7 +38,7 @@ class SageLLMClient(BenchmarkClient):
         """Initialize SageLLM client.
 
         Args:
-            engine: sagellm Engine instance (LLMEngine or BaseEngine).
+            engine: sagellm LLMEngine instance.
             timeout: Request timeout (seconds).
 
         Raises:
@@ -46,23 +46,20 @@ class SageLLMClient(BenchmarkClient):
         """
         super().__init__(name="sagellm", timeout=timeout)
 
-        # Try to import from sagellm_core (new architecture)
+        # Import from sagellm_core
         try:
-            from sagellm_core import LLMEngine, BaseEngine
+            from sagellm_core import LLMEngine
         except ImportError:
             raise ImportError(
                 "sagellm-core not installed. Install with: pip install isagellm-core"
             )
 
-        # Check if it's new or legacy engine
+        # Verify engine type
         if isinstance(engine, LLMEngine):
             self.engine_type = "llm_engine"
             self.is_legacy = False
-        elif isinstance(engine, BaseEngine):
-            self.engine_type = "base_engine"
-            self.is_legacy = True
         else:
-            raise TypeError(f"Expected LLMEngine or BaseEngine, got {type(engine)}")
+            raise TypeError(f"Expected LLMEngine, got {type(engine)}")
 
         self.engine = engine
 
