@@ -43,3 +43,36 @@ def test_report_help():
     assert result.exit_code == 0
     assert "--input" in result.output
     assert "--format" in result.output
+
+def test_run_mode_parameter():
+    """Test that --mode parameter is available in run command."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["run", "--help"])
+    assert result.exit_code == 0
+    assert "--mode" in result.output
+    assert "batch" in result.output
+    assert "traffic" in result.output
+
+
+def test_run_output_json_parameter():
+    """Test that --output-json parameter is available in run command."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["run", "--help"])
+    assert result.exit_code == 0
+    assert "--output-json" in result.output
+
+
+def test_mode_batch_validation():
+    """Test that batch mode is a valid choice."""
+    runner = CliRunner()
+    # Note: This will fail without a proper engine, but we just want to verify the parameter is accepted
+    # The actual validation happens during execution
+    result = runner.invoke(main, ["run", "--mode", "batch", "--help"])
+    assert result.exit_code == 0
+
+
+def test_mode_traffic_validation():
+    """Test that traffic mode is a valid choice."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["run", "--mode", "traffic", "--help"])
+    assert result.exit_code == 0

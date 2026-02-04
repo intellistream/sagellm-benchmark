@@ -177,6 +177,16 @@ class AggregatedMetrics:
     avg_throughput_tps: float = 0.0
     total_throughput_tps: float = 0.0
 
+    # 新增：对标 vLLM/SGLang 的吞吐量指标
+    request_throughput_rps: float = 0.0  # 请求吞吐量 (requests/s)
+    input_throughput_tps: float = 0.0  # 输入 token 吞吐量 (tokens/s)
+    output_throughput_tps: float = 0.0  # 输出 token 吞吐量 (tokens/s)
+    # total_throughput_tps 已有，表示 (input + output) / total_time_s
+
+    # Token 统计（用于计算吞吐量）
+    total_input_tokens: int = 0  # 总输入 tokens
+    total_output_tokens: int = 0  # 总输出 tokens
+
     # 错误率
     total_requests: int = 0
     successful_requests: int = 0

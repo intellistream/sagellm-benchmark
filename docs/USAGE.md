@@ -47,19 +47,32 @@ Run benchmark workloads.
 - `--output`, `-o`: Output directory
   - Default: `./benchmark_results`
 
+- `--mode`: Benchmark mode (NEW - aligns with vLLM/SGLang)
+  - `traffic`: Arrival pattern simulation (default)
+  - `batch`: Offline batch throughput (all requests at once)
+
+- `--output-json`: Path to save additional JSON output
+  - Optional custom path for JSON results
+
 - `--verbose`, `-v`: Enable verbose logging
 
 **Examples:**
 
 ```bash
-# Run all workloads with CPU backend
+# Run all workloads with CPU backend (traffic mode)
 sagellm-benchmark run --workload m1 --backend cpu
+
+# Run in batch mode for offline throughput testing (vLLM/SGLang compatible)
+sagellm-benchmark run --workload m1 --backend cpu --mode batch
 
 # Run short input with CPU backend
 sagellm-benchmark run --workload short --backend cpu --model sshleifer/tiny-gpt2
 
-# Run stress test with verbose output
-sagellm-benchmark run --workload stress --backend cpu -v -o ./my_results
+# Run stress test with verbose output and custom JSON output
+sagellm-benchmark run --workload stress --backend cpu -v -o ./my_results --output-json ./results.json
+
+# Batch mode with custom output
+sagellm-benchmark run --workload m1 --backend cpu --mode batch --output-json ./batch_results.json
 ```
 
 ### `sagellm-benchmark report`
@@ -133,6 +146,26 @@ sagellm-benchmark report --format json
 - **Throughput (tokens/sec)**: Number of tokens generated per second
   - Higher is better
   - Key metric for batch processing
+
+#### vLLM/SGLang Compatible Throughput Metrics (NEW)
+
+The benchmark now reports throughput metrics in a format compatible with vLLM and SGLang benchmarks:
+
+- **Request Throughput (req/s)**: Number of requests processed per second
+  - Formula: `successful_requests / total_time_s`
+  - Comparable to vLLM's request throughput
+
+- **Input Throughput (tokens/s)**: Input tokens processed per second
+  - Formula: `total_input_tokens / total_time_s`
+  - Measures prompt processing speed
+
+- **Output Throughput (tokens/s)**: Output tokens generated per second
+  - Formula: `total_output_tokens / total_time_s`
+  - Measures generation speed
+
+- **Total Throughput (tokens/s)**: Combined input + output tokens per second
+  - Formula: `(total_input_tokens + total_output_tokens) / total_time_s`
+  - Directly comparable to vLLM/SGLang total throughput
 
 ### Memory Metrics
 
@@ -366,3 +399,111 @@ benchmark:
 
 - [README.md](../README.md) - Overview and installation
 - [examples/](../examples/) - Sample output files
+---
+
+## Benchmarking Against vLLM/SGLang
+
+### Overview
+
+sageLLM Benchmark can now produce results directly comparable to vLLM and SGLang benchmarks. This section explains how to run comparable tests.
+
+### Batch Mode (Offline Throughput)
+
+Both vLLM and SGLang offer "offline throughput" benchmarks where all requests are submitted at once and total time is measured. Use `--mode batch`:
+
+```bash
+# sageLLM batch mode (comparable to vLLM's throughput.py)
+sagellm-benchmark run --workload m1 --backend cpu --mode batch --output-json batch_results.json
+
+# vLLM equivalent (for reference)
+# python benchmarks/throughput.py --model MODEL --num-prompts N --input-len X --output-len Y
+```
+
+**Key differences:**
+- vLLM: Uses synthetic prompts with specified lengths
+- sageLLM: Uses real prompts from ShareGPT or default dataset
+- Both: Measure total throughput (tokens/s)
+
+### Traffic Mode (Arrival Pattern Simulation)
+
+For simulating realistic traffic with arrival patterns:
+
+```bash
+# sageLLM traffic mode (default)
+sagellm-benchmark run --workload stress --backend cpu --mode traffic
+
+# SGLang equivalent (for reference)
+# python -m sglang.bench_serving --backend ... --request-rate R
+```
+
+### Comparing Metrics
+
+When comparing results between frameworks, focus on these metrics:
+
+| Metric | sageLLM Field | vLLM/SGLang Equivalent |
+|--------|---------------|------------------------|
+| Request throughput | `request_throughput_rps` | requests/s |
+| Input throughput | `input_throughput_tps` | input tokens/s |
+| Output throughput | `output_throughput_tps` | output tokens/s |
+| Total throughput | `total_throughput_tps` | total tokens/s |
+| Latency P50/P95/P99 | `p50_ttft_ms`, `p95_ttft_ms`, `p99_ttft_ms` | TTFT percentiles |
+
+### Example Comparison Workflow
+
+1. **Run sageLLM benchmark:**
+```bash
+sagellm-benchmark run --workload m1 --backend cpu --mode batch --output-json sagellm_results.json
+```
+
+2. **Extract comparable metrics:**
+```bash
+# View throughput metrics
+sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json
+
+# Or parse JSON directly
+cat sagellm_results.json | jq '.short_input | {
+  request_throughput_rps,
+  input_throughput_tps,
+  output_throughput_tps,
+  total_throughput_tps
+}'
+```
+
+3. **Run vLLM benchmark (for comparison):**
+```bash
+# Example vLLM command (adapt to your setup)
+python benchmarks/throughput.py \
+  --model sshleifer/tiny-gpt2 \
+  --num-prompts 100 \
+  --input-len 128 \
+  --output-len 128
+```
+
+4. **Compare results:**
+   - Total throughput (tokens/s) should be directly comparable
+   - Request throughput may differ due to different workload sizes
+   - Input/output breakdown helps identify bottlenecks
+
+### Best Practices for Fair Comparison
+
+1. **Use similar hardware:** GPU type, memory, CPU cores
+2. **Use same model:** Ensure identical model and quantization
+3. **Match workload parameters:** 
+   - Similar prompt lengths
+   - Similar output lengths  
+   - Same number of requests
+4. **Warm-up:** Both frameworks benefit from warm-up runs
+5. **Multiple runs:** Average results from 3-5 runs for stability
+
+### Limitations
+
+- **Backend differences:** CPU vs GPU performance varies significantly
+- **Implementation details:** Different frameworks may have different optimizations
+- **Workload differences:** Real prompts (sageLLM) vs synthetic (vLLM) may show different patterns
+
+### Getting Help
+
+For questions about benchmark comparisons:
+- GitHub Issues: https://github.com/intellistream/sagellm-benchmark/issues
+- Check the vLLM/SGLang documentation for their benchmark details
+- Review `THROUGHPUT_BENCHMARK_PLAN.md` for implementation details

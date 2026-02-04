@@ -32,11 +32,12 @@ def test_arrival_pattern_enum_values():
 def test_arrival_pattern_enum_members():
     """测试 ArrivalPattern 枚举成员."""
     patterns = list(ArrivalPattern)
-    assert len(patterns) == 4
+    assert len(patterns) == 5
     assert ArrivalPattern.INSTANT in patterns
     assert ArrivalPattern.FIXED in patterns
     assert ArrivalPattern.POISSON in patterns
     assert ArrivalPattern.GAMMA in patterns
+    assert ArrivalPattern.BATCH in patterns
 
 
 # ============================================================================
@@ -434,3 +435,98 @@ async def test_request_order_preserved():
     expected_ids = [f"req-{i}" for i in range(10)]
     actual_ids = [r.request_id for r in results]
     assert actual_ids == expected_ids, "Request order should be preserved"
+
+
+# ============================================================================
+# Test BATCH Mode
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_arrival_pattern_batch():
+    """测试 BATCH 模式枚举值."""
+    assert ArrivalPattern.BATCH.value == "batch"
+
+
+@pytest.mark.asyncio
+async def test_request_generator_batch_mode():
+    """测试 BATCH 模式：所有 delay 应该为 0（类似 INSTANT）."""
+    requests = _create_test_requests(5)
+    profile = TrafficProfile(pattern=ArrivalPattern.BATCH)
+    generator = RequestGenerator(requests, profile)
+
+    delays = []
+    request_ids = []
+    async for delay, request in generator:
+        delays.append(delay)
+        request_ids.append(request.request_id)
+
+    assert len(delays) == 5
+    assert all(d == 0.0 for d in delays), "BATCH mode should have zero delays"
+    assert request_ids == ["req-0", "req-1", "req-2", "req-3", "req-4"]
+
+
+@pytest.mark.asyncio
+async def test_traffic_controller_batch_mode():
+    """测试 TrafficController BATCH 模式：并发执行 + 总时长统计."""
+    client = StubClient(ttft_ms=10.0, tbt_ms=5.0)
+    profile = TrafficProfile(
+        pattern=ArrivalPattern.BATCH,
+        enable_batch_mode=True,
+    )
+    controller = TrafficController(client, profile)
+
+    requests = _create_test_requests(5)
+    results = await controller.run(requests)
+
+    assert len(results) == 5
+    assert all(r.success for r in results)
+    
+    # 验证 batch 模式下所有结果都有 _batch_total_time_s 属性
+    assert all(hasattr(r, '_batch_total_time_s') for r in results), \
+        "BATCH mode should add _batch_total_time_s to results"
+    
+    # 验证总时长是合理的（应该 > 0）
+    total_time = results[0]._batch_total_time_s
+    assert total_time > 0, "Batch total time should be positive"
+
+
+@pytest.mark.asyncio
+async def test_traffic_controller_batch_with_warmup():
+    """测试 TrafficController BATCH 模式 + warmup."""
+    client = StubClient(ttft_ms=10.0, tbt_ms=5.0)
+    profile = TrafficProfile(
+        pattern=ArrivalPattern.BATCH,
+        enable_batch_mode=True,
+        warmup_requests=3,
+    )
+    controller = TrafficController(client, profile)
+
+    requests = _create_test_requests(10)  # 10 个请求
+    results = await controller.run(requests)
+
+    # 前 3 个是 warmup，应该返回剩余 7 个结果
+    assert len(results) == 7
+    assert all(r.success for r in results)
+    
+    # 验证返回的是后 7 个请求
+    expected_ids = [f"req-{i}" for i in range(3, 10)]
+    actual_ids = [r.request_id for r in results]
+    assert actual_ids == expected_ids
+    
+    # 验证 batch 统计
+    assert all(hasattr(r, '_batch_total_time_s') for r in results)
+
+
+@pytest.mark.asyncio
+async def test_traffic_profile_batch_mode():
+    """测试 TrafficProfile enable_batch_mode 属性."""
+    profile = TrafficProfile(
+        pattern=ArrivalPattern.BATCH,
+        enable_batch_mode=True,
+        warmup_requests=5,
+    )
+    
+    assert profile.pattern == ArrivalPattern.BATCH
+    assert profile.enable_batch_mode is True
+    assert profile.warmup_requests == 5

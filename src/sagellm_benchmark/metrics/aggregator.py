@@ -132,10 +132,27 @@ class MetricsAggregator:
 
         if throughput_samples:
             aggregated.avg_throughput_tps = statistics.mean(throughput_samples)
-            # 总吞吐 = 总输出 tokens / 总时间
-            total_output_tokens = sum(r.output_tokens for r in successful)
-            if aggregated.total_time_s > 0:
-                aggregated.total_throughput_tps = total_output_tokens / aggregated.total_time_s
+
+        # 新增：Token 统计与对标吞吐量指标
+        total_input_tokens = sum(r.prompt_tokens for r in successful)
+        total_output_tokens = sum(r.output_tokens for r in successful)
+        aggregated.total_input_tokens = total_input_tokens
+        aggregated.total_output_tokens = total_output_tokens
+
+        # 计算对标 vLLM/SGLang 的吞吐量指标
+        if aggregated.total_time_s > 0:
+            # Request throughput (requests/s)
+            aggregated.request_throughput_rps = (
+                aggregated.successful_requests / aggregated.total_time_s
+            )
+            # Input throughput (tokens/s)
+            aggregated.input_throughput_tps = total_input_tokens / aggregated.total_time_s
+            # Output throughput (tokens/s)
+            aggregated.output_throughput_tps = total_output_tokens / aggregated.total_time_s
+            # Total throughput = (input + output) / total_time_s
+            aggregated.total_throughput_tps = (
+                total_input_tokens + total_output_tokens
+            ) / aggregated.total_time_s
 
         # === 内存（取 max）===
         mem_samples = [r.metrics.peak_mem_mb for r in successful if r.metrics.peak_mem_mb > 0]

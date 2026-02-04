@@ -34,12 +34,14 @@ class ArrivalPattern(str, Enum):
         FIXED: 固定间隔发送
         POISSON: 泊松分布（指数间隔）
         GAMMA: Gamma 分布（支持突发流量控制）
+        BATCH: Offline Batch 模式（对标 vLLM/SGLang，一次性提交所有请求，测量总耗时）
     """
 
     INSTANT = "instant"
     FIXED = "fixed"
     POISSON = "poisson"
     GAMMA = "gamma"
+    BATCH = "batch"
 
 
 @dataclass
@@ -53,6 +55,7 @@ class TrafficProfile:
         duration_s: 持续时间（秒），None 表示发完所有请求即停止。
         warmup_requests: 预热请求数（不计入统计）。
         seed: 随机种子（用于可复现测试）。
+        enable_batch_mode: 是否启用 Batch 模式（对标 vLLM/SGLang 的 offline throughput）。
 
     Example:
         >>> # 泊松分布，10 QPS，5 个预热请求
@@ -67,6 +70,12 @@ class TrafficProfile:
         ...     pattern=ArrivalPattern.FIXED,
         ...     request_rate=20.0,
         ... )
+        >>> # Offline Batch 模式
+        >>> profile = TrafficProfile(
+        ...     pattern=ArrivalPattern.BATCH,
+        ...     enable_batch_mode=True,
+        ...     warmup_requests=10,
+        ... )
     """
 
     pattern: ArrivalPattern = ArrivalPattern.INSTANT
@@ -75,6 +84,7 @@ class TrafficProfile:
     duration_s: float | None = None
     warmup_requests: int = 0
     seed: int | None = None
+    enable_batch_mode: bool = False
 
 
 class RequestGenerator:
@@ -142,12 +152,13 @@ class RequestGenerator:
 
         Note:
             - INSTANT 模式：所有延迟为 0
+            - BATCH 模式：所有延迟为 0（类似 INSTANT，但在 TrafficController 中有特殊处理）
             - FIXED 模式：第一个请求延迟 0，后续请求固定间隔
             - POISSON 模式：使用指数分布
             - GAMMA 模式：使用 Gamma 分布
         """
-        # INSTANT 模式：无延迟
-        if self.profile.pattern == ArrivalPattern.INSTANT:
+        # INSTANT 或 BATCH 模式：无延迟
+        if self.profile.pattern in (ArrivalPattern.INSTANT, ArrivalPattern.BATCH):
             return 0.0
 
         # 未设置速率：无延迟
@@ -234,6 +245,7 @@ class TrafficController:
             - warmup 请求从 requests 前部提取
             - 正式测试请求为剩余请求
             - 如果 requests 数量少于 warmup_requests，则全部用于 warmup，正式测试返回空列表
+            - BATCH 模式会记录总耗时并添加到每个结果的 e2e_latency_ms 中
         """
         all_requests = requests.copy()
 
@@ -255,8 +267,28 @@ class TrafficController:
             return []
 
         logger.info(f"Starting actual test phase: {len(all_requests)} requests")
-        results = await self._run_requests(all_requests, is_warmup=False)
-        logger.info(f"Test phase completed: {len(results)} results")
+        
+        # Batch 模式：记录总耗时
+        if self.profile.pattern == ArrivalPattern.BATCH or self.profile.enable_batch_mode:
+            import time
+            start_time = time.perf_counter()
+            results = await self._run_requests(all_requests, is_warmup=False)
+            end_time = time.perf_counter()
+            total_time_s = end_time - start_time
+            
+            # 为每个结果添加总耗时信息（用于后续聚合指标计算）
+            # 注意：这里的 e2e_latency_ms 在 BATCH 模式下表示总时长，不是单个请求的延迟
+            for result in results:
+                if not hasattr(result, '_batch_total_time_s'):
+                    result._batch_total_time_s = total_time_s
+            
+            logger.info(
+                f"Batch test completed: {len(results)} results, "
+                f"total_time={total_time_s:.3f}s"
+            )
+        else:
+            results = await self._run_requests(all_requests, is_warmup=False)
+            logger.info(f"Test phase completed: {len(results)} results")
 
         return results
 
@@ -275,24 +307,25 @@ class TrafficController:
             结果列表（与 requests 顺序一致）。
 
         Note:
-            - INSTANT 模式：使用 asyncio.gather 并发执行
+            - INSTANT 和 BATCH 模式：使用 asyncio.gather 并发执行
             - 其他模式：按延迟顺序执行（流式）
         """
         results: list[BenchmarkResult] = []
         generator = RequestGenerator(requests, self.profile)
 
-        # INSTANT 模式：并发执行
-        if self.profile.pattern == ArrivalPattern.INSTANT:
+        # INSTANT 或 BATCH 模式：并发执行
+        if self.profile.pattern in (ArrivalPattern.INSTANT, ArrivalPattern.BATCH):
             tasks = []
             async for delay, request in generator:
-                # INSTANT 模式下 delay 应该为 0，但仍然尊重返回值
+                # INSTANT/BATCH 模式下 delay 应该为 0，但仍然尊重返回值
                 if delay > 0:
                     await asyncio.sleep(delay)
                 tasks.append(asyncio.create_task(self.client.generate(request)))
 
             # 等待所有任务完成
             if tasks:
-                logger.debug(f"Running {len(tasks)} requests concurrently")
+                mode_name = "BATCH" if self.profile.pattern == ArrivalPattern.BATCH else "INSTANT"
+                logger.debug(f"Running {len(tasks)} requests concurrently ({mode_name} mode)")
                 results = await asyncio.gather(*tasks, return_exceptions=False)
                 results = list(results)
 

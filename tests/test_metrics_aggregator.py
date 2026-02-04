@@ -383,3 +383,278 @@ def test_partial_itl_list() -> None:
 
     # E2EL 统计：[100.0, 80.0, 90.0] = 3 样本
     assert aggregated.avg_e2el_ms == pytest.approx(90.0, rel=0.01)
+
+# ==================== 新增：对标 vLLM/SGLang 吞吐量指标测试 ====================
+
+
+def test_throughput_metrics_basic() -> None:
+    """测试基本吞吐量指标计算。"""
+    results = [
+        BenchmarkResult(
+            request_id="req-1",
+            success=True,
+            error=None,
+            metrics=Metrics(
+                ttft_ms=10.0,
+                tbt_ms=2.0,
+                tpot_ms=2.5,
+                throughput_tps=100.0,
+                peak_mem_mb=1024,
+                error_rate=0.0,
+                timestamps=Timestamps(
+                    queued_at=1000.0,
+                    scheduled_at=1001.0,
+                    executed_at=1002.0,
+                    completed_at=1005.0,  # 持续 5s
+                ),
+            ),
+            output_tokens=50,
+            prompt_tokens=100,
+        ),
+        BenchmarkResult(
+            request_id="req-2",
+            success=True,
+            error=None,
+            metrics=Metrics(
+                ttft_ms=15.0,
+                tbt_ms=3.0,
+                tpot_ms=3.0,
+                throughput_tps=90.0,
+                peak_mem_mb=1280,
+                error_rate=0.0,
+                timestamps=Timestamps(
+                    queued_at=1002.0,
+                    scheduled_at=1003.0,
+                    executed_at=1004.0,
+                    completed_at=1010.0,  # 持续到 10s
+                ),
+            ),
+            output_tokens=60,
+            prompt_tokens=100,
+        ),
+    ]
+
+    aggregated = MetricsAggregator.aggregate(results)
+
+    # 验证 Token 统计
+    assert aggregated.total_input_tokens == 200  # 100 + 100
+    assert aggregated.total_output_tokens == 110  # 50 + 60
+
+    # 验证总时间：从最早的 queued_at (1000.0) 到最晚的 completed_at (1010.0)
+    assert aggregated.total_time_s == pytest.approx(10.0, abs=0.1)
+
+    # 验证新增的吞吐量指标
+    # Request throughput = 2 successful requests / 10s = 0.2 req/s
+    assert aggregated.request_throughput_rps == pytest.approx(0.2, abs=0.01)
+
+    # Input throughput = 200 tokens / 10s = 20 tokens/s
+    assert aggregated.input_throughput_tps == pytest.approx(20.0, abs=0.1)
+
+    # Output throughput = 110 tokens / 10s = 11 tokens/s
+    assert aggregated.output_throughput_tps == pytest.approx(11.0, abs=0.1)
+
+    # Total throughput = (200 + 110) / 10s = 31 tokens/s
+    assert aggregated.total_throughput_tps == pytest.approx(31.0, abs=0.1)
+
+
+def test_throughput_metrics_zero_time() -> None:
+    """测试零时间时吞吐量为 0。"""
+    results = [
+        BenchmarkResult(
+            request_id="req-1",
+            success=True,
+            error=None,
+            metrics=Metrics(
+                ttft_ms=10.0,
+                tbt_ms=2.0,
+                tpot_ms=2.5,
+                throughput_tps=100.0,
+                peak_mem_mb=1024,
+                error_rate=0.0,
+                timestamps=Timestamps(
+                    queued_at=0.0,
+                    scheduled_at=0.0,
+                    executed_at=0.0,
+                    completed_at=0.0,
+                ),
+            ),
+            output_tokens=50,
+            prompt_tokens=100,
+        ),
+    ]
+
+    aggregated = MetricsAggregator.aggregate(results)
+
+    # 时间为 0，吞吐量应该为 0
+    assert aggregated.total_time_s == 0.0
+    assert aggregated.request_throughput_rps == 0.0
+    assert aggregated.input_throughput_tps == 0.0
+    assert aggregated.output_throughput_tps == 0.0
+    assert aggregated.total_throughput_tps == 0.0
+
+
+def test_throughput_metrics_with_failures() -> None:
+    """测试包含失败请求时的吞吐量计算。"""
+    results = [
+        BenchmarkResult(
+            request_id="req-1",
+            success=True,
+            error=None,
+            metrics=Metrics(
+                ttft_ms=10.0,
+                tbt_ms=2.0,
+                tpot_ms=2.5,
+                throughput_tps=100.0,
+                peak_mem_mb=1024,
+                error_rate=0.0,
+                timestamps=Timestamps(
+                    queued_at=1000.0,
+                    scheduled_at=1001.0,
+                    executed_at=1002.0,
+                    completed_at=1005.0,
+                ),
+            ),
+            output_tokens=50,
+            prompt_tokens=100,
+        ),
+        BenchmarkResult(
+            request_id="req-2",
+            success=False,  # 失败的请求
+            error="Timeout",
+            metrics=None,
+            output_tokens=0,
+            prompt_tokens=0,
+        ),
+        BenchmarkResult(
+            request_id="req-3",
+            success=True,
+            error=None,
+            metrics=Metrics(
+                ttft_ms=15.0,
+                tbt_ms=3.0,
+                tpot_ms=3.0,
+                throughput_tps=90.0,
+                peak_mem_mb=1280,
+                error_rate=0.0,
+                timestamps=Timestamps(
+                    queued_at=1002.0,
+                    scheduled_at=1003.0,
+                    executed_at=1004.0,
+                    completed_at=1010.0,
+                ),
+            ),
+            output_tokens=60,
+            prompt_tokens=100,
+        ),
+    ]
+
+    aggregated = MetricsAggregator.aggregate(results)
+
+    # 只统计成功的请求
+    assert aggregated.successful_requests == 2
+    assert aggregated.failed_requests == 1
+    assert aggregated.total_input_tokens == 200  # 只统计成功的
+    assert aggregated.total_output_tokens == 110
+
+    # Request throughput 只统计成功的请求：2 / 10s = 0.2 req/s
+    assert aggregated.request_throughput_rps == pytest.approx(0.2, abs=0.01)
+
+    # Token throughput 也只统计成功的请求
+    assert aggregated.input_throughput_tps == pytest.approx(20.0, abs=0.1)
+    assert aggregated.output_throughput_tps == pytest.approx(11.0, abs=0.1)
+    assert aggregated.total_throughput_tps == pytest.approx(31.0, abs=0.1)
+
+
+def test_throughput_metrics_alignment() -> None:
+    """测试新旧吞吐量指标的对齐性。"""
+    results = [
+        BenchmarkResult(
+            request_id="req-1",
+            success=True,
+            error=None,
+            metrics=Metrics(
+                ttft_ms=10.0,
+                tbt_ms=2.0,
+                tpot_ms=2.5,
+                throughput_tps=100.0,
+                peak_mem_mb=1024,
+                error_rate=0.0,
+                timestamps=Timestamps(
+                    queued_at=1000.0,
+                    scheduled_at=1001.0,
+                    executed_at=1002.0,
+                    completed_at=1010.0,
+                ),
+            ),
+            output_tokens=100,
+            prompt_tokens=200,
+        ),
+    ]
+
+    aggregated = MetricsAggregator.aggregate(results)
+
+    # total_throughput_tps 应该等于 (input + output) / total_time
+    expected_total = (200 + 100) / 10.0  # 30 tokens/s
+    assert aggregated.total_throughput_tps == pytest.approx(expected_total, abs=0.1)
+
+    # 验证所有吞吐量指标都大于 0
+    assert aggregated.request_throughput_rps > 0
+    assert aggregated.input_throughput_tps > 0
+    assert aggregated.output_throughput_tps > 0
+    assert aggregated.total_throughput_tps > 0
+
+def test_throughput_fields_presence() -> None:
+    """测试所有对标 vLLM/SGLang 的吞吐量字段是否存在。"""
+    results = [
+        BenchmarkResult(
+            request_id="req-1",
+            success=True,
+            error=None,
+            metrics=Metrics(
+                ttft_ms=10.0,
+                tbt_ms=2.0,
+                tpot_ms=2.5,
+                throughput_tps=100.0,
+                peak_mem_mb=1024,
+                error_rate=0.0,
+                timestamps=Timestamps(
+                    queued_at=1000.0,
+                    scheduled_at=1001.0,
+                    executed_at=1002.0,
+                    completed_at=1010.0,
+                ),
+            ),
+            output_tokens=100,
+            prompt_tokens=200,
+        ),
+    ]
+
+    aggregated = MetricsAggregator.aggregate(results)
+
+    # 验证所有必需的字段都存在
+    required_fields = [
+        "request_throughput_rps",
+        "input_throughput_tps",
+        "output_throughput_tps",
+        "total_throughput_tps",
+        "total_input_tokens",
+        "total_output_tokens",
+        "avg_throughput_tps",
+    ]
+    
+    for field in required_fields:
+        assert hasattr(aggregated, field), f"Missing field: {field}"
+        value = getattr(aggregated, field)
+        assert value is not None, f"Field {field} is None"
+        
+    # 验证token统计
+    assert aggregated.total_input_tokens == 200
+    assert aggregated.total_output_tokens == 100
+    
+    # 验证吞吐量计算正确
+    total_time = 10.0  # completed_at - queued_at
+    assert aggregated.request_throughput_rps == pytest.approx(1.0 / total_time, abs=0.01)
+    assert aggregated.input_throughput_tps == pytest.approx(200 / total_time, abs=0.1)
+    assert aggregated.output_throughput_tps == pytest.approx(100 / total_time, abs=0.1)
+    assert aggregated.total_throughput_tps == pytest.approx(300 / total_time, abs=0.1)
+

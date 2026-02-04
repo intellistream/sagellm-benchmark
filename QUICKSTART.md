@@ -98,6 +98,12 @@ sagellm-benchmark run --backend cpu --model gpt2
 # Run specific workload
 sagellm-benchmark run --workload short --backend cpu
 
+# Run in batch mode (offline throughput, vLLM/SGLang compatible)
+sagellm-benchmark run --workload m1 --backend cpu --mode batch
+
+# Run with custom JSON output
+sagellm-benchmark run --workload m1 --backend cpu --output-json ./my_results.json
+
 # Run with verbose logging
 sagellm-benchmark run --workload m1 --backend cpu -v
 
@@ -137,6 +143,27 @@ sagellm-benchmark run --workload year1 --backend cpu
 - Read [USAGE.md](../docs/USAGE.md) for detailed documentation
 - Check [examples/](../examples/) for sample outputs
 - See [README.md](../README.md) for architecture details
+- **NEW:** See "Benchmarking Against vLLM/SGLang" section in [USAGE.md](../docs/USAGE.md) for comparison guide
+
+## Comparing with vLLM/SGLang
+
+sageLLM Benchmark now supports modes compatible with vLLM and SGLang:
+
+```bash
+# Batch mode - comparable to vLLM's offline throughput
+sagellm-benchmark run --workload m1 --backend cpu --mode batch
+
+# Traffic mode - comparable to SGLang's serving benchmark
+sagellm-benchmark run --workload stress --backend cpu --mode traffic
+```
+
+**Output includes vLLM/SGLang compatible metrics:**
+- Request Throughput (req/s)
+- Input Throughput (tokens/s)
+- Output Throughput (tokens/s)  
+- Total Throughput (tokens/s)
+
+See [USAGE.md - Benchmarking Against vLLM/SGLang](../docs/USAGE.md#benchmarking-against-vllmsglang) for detailed comparison workflow.
 
 ## Need Help?
 

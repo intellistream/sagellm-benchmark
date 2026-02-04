@@ -193,6 +193,18 @@ def main() -> None:
     help="Output directory (default: outputs/<backend>/<model>/<workload_date_seq>/).",
 )
 @click.option(
+    "--mode",
+    type=click.Choice(["batch", "traffic"]),
+    default="traffic",
+    help="Benchmark mode: 'batch' for offline throughput (all requests at once), 'traffic' for arrival pattern simulation.",
+)
+@click.option(
+    "--output-json",
+    type=click.Path(),
+    default=None,
+    help="Path to save JSON output (in addition to default location).",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
@@ -215,6 +227,8 @@ def run(
     backend: str,
     model: str | None,
     output: str,
+    mode: str,
+    output_json: str | None,
     verbose: bool,
     dataset: str,
     num_samples: int,
@@ -225,6 +239,7 @@ def run(
     console.print(f"Backend: {backend}")
     console.print(f"Model: {model}")
     console.print(f"Dataset: {dataset}")
+    console.print(f"Mode: {mode}")
     
     # Create hierarchical output directory
     output_dir, metadata = create_output_directory(backend, model or "default", workload, output)
@@ -329,6 +344,7 @@ def run(
         output_dir=output_dir,
         verbose=verbose,
         dataset=dataset_instance,  # Pass dataset to runner
+        mode=mode,  # Pass benchmark mode
     )
     
     # Save run configuration
@@ -349,6 +365,23 @@ def run(
         _display_results(results)
 
         console.print(f"\n[bold]Results saved to:[/bold] {output_dir}")
+        
+        # Save to custom JSON output if specified
+        if output_json:
+            import json
+            output_json_path = Path(output_json)
+            output_json_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Convert results to serializable format
+            json_results = {}
+            for name, metrics in results.items():
+                from dataclasses import asdict
+                json_results[name] = asdict(metrics)
+            
+            with open(output_json_path, "w") as f:
+                json.dump(json_results, f, indent=2)
+            
+            console.print(f"[bold]Additional JSON output:[/bold] {output_json_path}")
         
         # Show latest link if not custom output
         if not metadata.get("custom_output"):
@@ -423,6 +456,18 @@ def _display_results(results: dict) -> None:
         )
 
     console.print(table)
+    
+    # Display throughput benchmark metrics (aligned with vLLM/SGLang)
+    console.print("\n[bold cyan]Throughput Metrics (vLLM/SGLang Compatible)[/bold cyan]")
+    
+    for name, metrics in results.items():
+        console.print(f"\n[bold]{name}:[/bold]")
+        console.print(f"  Request Throughput:  {metrics.request_throughput_rps:>8.2f} req/s")
+        console.print(f"  Input Throughput:    {metrics.input_throughput_tps:>8.2f} tokens/s")
+        console.print(f"  Output Throughput:   {metrics.output_throughput_tps:>8.2f} tokens/s")
+        console.print(f"  Total Throughput:    {metrics.total_throughput_tps:>8.2f} tokens/s")
+        console.print(f"  Total Input Tokens:  {metrics.total_input_tokens:>8d}")
+        console.print(f"  Total Output Tokens: {metrics.total_output_tokens:>8d}")
 
 
 def _display_summary_table(data: dict) -> None:

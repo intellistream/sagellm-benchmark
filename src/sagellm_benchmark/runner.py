@@ -26,6 +26,7 @@ class BenchmarkConfig:
         output_dir: Directory for results (default: ./benchmark_results).
         verbose: Enable verbose logging.
         dataset: Optional dataset for sampling real prompts.
+        mode: Benchmark mode ('batch' or 'traffic').
     """
 
     engine: Any  # BaseEngine instance
@@ -33,6 +34,7 @@ class BenchmarkConfig:
     output_dir: Path = Path("./benchmark_results")
     verbose: bool = False
     dataset: Any = None  # Optional BenchmarkDataset instance
+    mode: str = "traffic"  # 'batch' or 'traffic'
 
 
 class BenchmarkRunner:
