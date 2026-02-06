@@ -15,40 +15,75 @@
     python scripts/aggregate_for_hf.py
     或
     sagellm-benchmark aggregate
-    
+
 HF 仓库（公开访问）：
-    https://huggingface.co/datasets/wangyao36/sagellm-benchmark-results
+    https://huggingface.co/datasets/intellistream/sagellm-benchmark-results
 """
+
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 from pathlib import Path
 
 # HF 配置
-HF_REPO = "wangyao36/sagellm-benchmark-results"
+HF_REPO = "intellistream/sagellm-benchmark-results"
 HF_BRANCH = "main"
 
 
 def download_from_hf(filename: str) -> list[dict]:
-    """从 Hugging Face 下载现有数据"""
-    url = f"https://huggingface.co/datasets/{HF_REPO}/resolve/{HF_BRANCH}/{filename}"
-    print(f"📥 下载 HF 数据: {url}")
+    """
+    从 Hugging Face 下载现有数据
 
-    try:
-        with urllib.request.urlopen(url, timeout=30) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            print(f"  ✓ 下载成功: {len(data)} 条记录")
-            return data
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            print(f"  ⚠️ 文件不存在（首次上传）")
-        else:
-            print(f"  ⚠️ HTTP 错误 {e.code}: {e.reason}")
-        return []
-    except Exception as e:
-        print(f"  ⚠️ 下载失败: {e}")
-        return []
+    端点选择策略（优先级从高到低）：
+    1. 环境变量 HF_ENDPOINT（如果设置）
+    2. 官方地址 https://huggingface.co（默认）
+    3. 如果官方失败，自动回退到 https://hf-mirror.com
+    """
+    # 1. 优先使用环境变量指定的端点
+    endpoint = os.getenv("HF_ENDPOINT", "https://huggingface.co")
+
+    # 2. 定义备用端点列表（如果主端点失败）
+    fallback_endpoints = []
+    if endpoint != "https://hf-mirror.com":
+        # 如果当前不是镜像，将镜像作为备用
+        fallback_endpoints.append("https://hf-mirror.com")
+    if endpoint != "https://huggingface.co":
+        # 如果当前不是官方，将官方作为备用
+        fallback_endpoints.append("https://huggingface.co")
+
+    # 3. 尝试主端点
+    endpoints_to_try = [endpoint] + fallback_endpoints
+
+    for idx, ep in enumerate(endpoints_to_try):
+        url = f"{ep}/datasets/{HF_REPO}/resolve/{HF_BRANCH}/{filename}"
+        is_primary = idx == 0
+        prefix = "📥 下载 HF 数据:" if is_primary else "  🔄 回退到:"
+
+        print(f"{prefix} {url}")
+
+        try:
+            with urllib.request.urlopen(url, timeout=30) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                print(f"  ✓ 下载成功: {len(data)} 条记录")
+                return data
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                print("  ⚠️ 文件不存在（首次上传）")
+                return []  # 404 是确定的，无需重试
+            else:
+                print(f"  ⚠️ HTTP 错误 {e.code}: {e.reason}")
+                if idx < len(endpoints_to_try) - 1:
+                    continue  # 尝试下一个端点
+                return []
+        except Exception as e:
+            print(f"  ⚠️ 下载失败: {e}")
+            if idx < len(endpoints_to_try) - 1:
+                continue  # 尝试下一个端点
+            return []
+
+    return []
 
 
 def load_local_results(outputs_dir: Path) -> list[dict]:
@@ -70,14 +105,14 @@ def load_local_results(outputs_dir: Path) -> list[dict]:
 def get_config_key(entry: dict) -> str:
     """
     生成配置唯一标识 key
-    
+
     相同配置 = 相同硬件 + 相同模型 + 相同 workload + 相同精度
     """
     hw = entry.get("hardware", {})
     model = entry.get("model", {})
     workload = entry.get("workload", {})
     cluster = entry.get("cluster")
-    
+
     # 构建配置 key
     parts = [
         hw.get("chip_model", "unknown"),
@@ -87,18 +122,18 @@ def get_config_key(entry: dict) -> str:
         str(workload.get("input_length", 0)),
         str(workload.get("output_length", 0)),
     ]
-    
+
     # 如果是多节点，加入节点信息
     if cluster and cluster.get("node_count", 1) > 1:
         parts.append(f"nodes_{cluster['node_count']}")
-    
+
     return "|".join(parts)
 
 
 def is_better_result(new_entry: dict, existing_entry: dict) -> bool:
     """
     判断新结果是否比现有结果更好
-    
+
     评判标准（优先级从高到低）：
     1. throughput_tps 越高越好
     2. ttft_ms 越低越好
@@ -106,7 +141,7 @@ def is_better_result(new_entry: dict, existing_entry: dict) -> bool:
     """
     new_metrics = new_entry.get("metrics", {})
     old_metrics = existing_entry.get("metrics", {})
-    
+
     # throughput 高更好
     new_tps = new_metrics.get("throughput_tps", 0)
     old_tps = old_metrics.get("throughput_tps", 0)
@@ -114,7 +149,7 @@ def is_better_result(new_entry: dict, existing_entry: dict) -> bool:
         return True
     if old_tps > new_tps * 1.05:
         return False
-    
+
     # ttft 低更好
     new_ttft = new_metrics.get("ttft_ms", float("inf"))
     old_ttft = old_metrics.get("ttft_ms", float("inf"))
@@ -122,13 +157,13 @@ def is_better_result(new_entry: dict, existing_entry: dict) -> bool:
         return True
     if old_ttft < new_ttft * 0.95:
         return False
-    
+
     # error_rate 低更好
     new_err = new_metrics.get("error_rate", 1)
     old_err = old_metrics.get("error_rate", 1)
     if new_err < old_err:
         return True
-    
+
     # 默认保留现有的（不覆盖）
     return False
 
@@ -136,7 +171,7 @@ def is_better_result(new_entry: dict, existing_entry: dict) -> bool:
 def merge_results(existing: list[dict], new_results: list[dict]) -> list[dict]:
     """
     合并现有数据和新数据
-    
+
     规则：
     - 基于配置 key 去重（相同硬件+模型+workload+精度）
     - 相同配置时，保留性能更好的结果
@@ -144,19 +179,19 @@ def merge_results(existing: list[dict], new_results: list[dict]) -> list[dict]:
     """
     # 使用 dict 以 config_key 为 key 进行合并
     merged: dict[str, dict] = {}
-    
+
     # 先加入现有数据
     for entry in existing:
         config_key = get_config_key(entry)
         merged[config_key] = entry
-    
+
     added = 0
     updated = 0
     skipped = 0
-    
+
     for entry in new_results:
         config_key = get_config_key(entry)
-        
+
         if config_key not in merged:
             # 新配置，直接添加
             merged[config_key] = entry
@@ -170,7 +205,7 @@ def merge_results(existing: list[dict], new_results: list[dict]) -> list[dict]:
             else:
                 skipped += 1
                 print(f"    ○ 跳过 (已有更好): {config_key[:50]}...")
-    
+
     print(f"  📊 合并结果: 新增 {added}, 更新 {updated}, 跳过 {skipped}, 总计 {len(merged)}")
     return list(merged.values())
 
@@ -199,7 +234,7 @@ def main():
     print("=" * 70)
     print("📦 sageLLM Benchmark - 本地聚合工具")
     print("=" * 70)
-    
+
     # 路径设置
     base_dir = Path(__file__).parent.parent
     outputs_dir = base_dir / "outputs"
@@ -209,30 +244,28 @@ def main():
     hf_output_dir.mkdir(exist_ok=True)
 
     # Step 1: 从 HF 下载现有数据（公开访问，无需 token）
-    print(f"\n📥 从 Hugging Face 下载最新数据...")
+    print("\n📥 从 Hugging Face 下载最新数据...")
     print(f"   仓库: https://huggingface.co/datasets/{HF_REPO}")
     existing_single = download_from_hf("leaderboard_single.json")
     existing_multi = download_from_hf("leaderboard_multi.json")
 
     # Step 2: 加载本地新结果
-    print(f"\n📂 扫描本地 outputs/ 目录...")
+    print("\n📂 扫描本地 outputs/ 目录...")
     if not outputs_dir.exists():
-        print(f"  ⚠️ outputs/ 目录不存在")
-        print(f"  💡 请先运行 benchmark: sagellm-benchmark run --model <model>")
+        print("  ⚠️ outputs/ 目录不存在")
+        print("  💡 请先运行 benchmark: sagellm-benchmark run --model <model>")
         local_results = []
     else:
         local_results = load_local_results(outputs_dir)
         if not local_results:
-            print(f"  ⚠️ 未找到任何 *_leaderboard.json 文件")
-            print(f"  💡 请先运行 benchmark 生成结果")
+            print("  ⚠️ 未找到任何 *_leaderboard.json 文件")
+            print("  💡 请先运行 benchmark 生成结果")
         else:
             print(f"  ✓ 找到 {len(local_results)} 条本地结果")
 
     # Step 3: 分类本地结果
     if local_results:
-        local_single_chip, local_multi_chip, local_multi_node = categorize_results(
-            local_results
-        )
+        local_single_chip, local_multi_chip, local_multi_node = categorize_results(local_results)
         local_single = local_single_chip + local_multi_chip
         print(f"  └─ 单机: {len(local_single)} 条, 多机: {len(local_multi_node)} 条")
     else:
@@ -240,14 +273,14 @@ def main():
         local_multi_node = []
 
     # Step 4: 合并数据
-    print(f"\n🔀 智能合并数据...")
-    print(f"  Single (单机单卡+多卡):")
+    print("\n🔀 智能合并数据...")
+    print("  Single (单机单卡+多卡):")
     merged_single = merge_results(existing_single, local_single)
-    print(f"  Multi (多机多卡):")
+    print("  Multi (多机多卡):")
     merged_multi = merge_results(existing_multi, local_multi_node)
 
     # Step 5: 保存到 JSON 文件
-    print(f"\n💾 保存到 hf_data/ 目录...")
+    print("\n💾 保存到 hf_data/ 目录...")
     single_file = hf_output_dir / "leaderboard_single.json"
     multi_file = hf_output_dir / "leaderboard_multi.json"
 
@@ -261,20 +294,20 @@ def main():
     print(f"  ✓ {multi_file} ({len(merged_multi)} 条)")
 
     # 友好提示
-    print(f"\n" + "=" * 70)
-    print(f"✅ 聚合完成！")
-    print(f"=" * 70)
-    print(f"\n📌 下一步操作：")
-    print(f"  1. 提交聚合数据到 git:")
-    print(f"     git add hf_data/")
-    print(f"     git commit -m 'feat: add benchmark results'")
-    print(f"     git push")
-    print(f"\n  2. GitHub Actions 会自动:")
-    print(f"     - 与 HF 最新数据合并（解决并发冲突）")
-    print(f"     - 上传到 Hugging Face")
-    print(f"     - 清理 hf_data/ 保持仓库轻量")
-    print(f"\n💡 提示: outputs/ 目录不会被提交（在 .gitignore 中）")
-    print(f"=" * 70)
+    print("\n" + "=" * 70)
+    print("✅ 聚合完成！")
+    print("=" * 70)
+    print("\n📌 下一步操作：")
+    print("  1. 提交聚合数据到 git:")
+    print("     git add hf_data/")
+    print("     git commit -m 'feat: add benchmark results'")
+    print("     git push")
+    print("\n  2. GitHub Actions 会自动:")
+    print("     - 与 HF 最新数据合并（解决并发冲突）")
+    print("     - 上传到 Hugging Face")
+    print("     - 清理 hf_data/ 保持仓库轻量")
+    print("\n💡 提示: outputs/ 目录不会被提交（在 .gitignore 中）")
+    print("=" * 70)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- 新增 `WORKFLOW.md` 文档
+  - 清晰说明用户工作流程（运行 → 聚合 → 推送）
+  - 详细解释自动化流程（拉取 → 合并 → 上传 → 清理）
+  - 包含完整流程图和常见问题解答
+
+### Changed
+- 更新 HuggingFace 数据集仓库地址
+  - 从 `wangyao36/sagellm-benchmark-results` 迁移到 `intellistream/sagellm-benchmark-results`
+  - 更新所有脚本和配置文件中的仓库引用
+
+### Fixed
+- 修复 HuggingFace 数据下载和上传的端点问题
+  - 默认使用官方地址 `https://huggingface.co` 替代镜像站
+  - 支持环境变量 `HF_ENDPOINT` 自定义端点
+  - 官方地址失败时自动回退到 `https://hf-mirror.com`
+  - 更新 `scripts/merge_and_upload.py`、`scripts/aggregate_for_hf.py` 和 `scripts/upload_to_hf.py`
+  - 修复上传脚本默认使用镜像导致连接超时的问题
+  - 移除 GitHub Actions 中硬编码的镜像端点配置
+
 ## [0.4.0.0] - 2026-01-30
 
 ### Changed
