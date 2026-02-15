@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- 修复 agent 指令中的命令错误（sage-dev gh → sagellm-dev gh）
+
+### Added
+- agent 指令新增文档规范：禁止创建总结性文档
+
 ### Added
 - 新增 `WORKFLOW.md` 文档
   - 清晰说明用户工作流程（运行 → 聚合 → 推送）
