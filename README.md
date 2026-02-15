@@ -21,6 +21,7 @@ New here? See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide.
 - Standardized JSON metrics and reports
 - One-command benchmark runner
 - Extensible backend support
+- Performance benchmark CLI (`perf`) for operator and E2E benchmark baselines
 
 ## Dependencies
 
@@ -55,6 +56,10 @@ sagellm-benchmark run --workload m1 --backend cpu --output ./benchmark_results
 
 # Generate a markdown report
 sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format markdown
+
+# Run migrated performance benchmarks
+sagellm-benchmark perf --type operator --device cpu
+sagellm-benchmark perf --type e2e --model Qwen/Qwen2-7B-Instruct --batch-size 1 --batch-size 4
 ```
 
 CLI examples:
@@ -71,6 +76,9 @@ sagellm-benchmark run --workload short --backend cpu
 
 # Generate reports
 sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format markdown
+
+# Generate report from perf JSON
+sagellm-benchmark report --input ./benchmark_results/perf_results.json --format markdown
 ```
 
 ## Workloads

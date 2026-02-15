@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Issue #45: 迁移 sagellm-core 性能测试框架到 sagellm-benchmark
+  - 新增 `sagellm_benchmark.performance` 模块（`benchmark_utils`、`operator_benchmarks`、`model_benchmarks`）
+  - 新增 CLI 子命令：`sagellm-benchmark perf --type operator|e2e`
+  - 新增性能相关测试：`tests/test_performance_utils.py`、`tests/test_performance_cli.py`
+
+### Changed
+- 扩展 `report` 命令，支持读取 `perf` 产物（operator/e2e JSON）并输出 table/json/markdown
+- 更新 README，补充性能基准命令示例与报告示例
+
 ### Fixed
 - 修复 agent 指令中的命令错误（sage-dev gh → sagellm-dev gh）
 

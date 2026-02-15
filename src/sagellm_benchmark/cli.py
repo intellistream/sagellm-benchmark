@@ -17,13 +17,13 @@ console = Console()
 
 def normalize_model_name(model_path: str) -> str:
     """Normalize model path to directory name.
-    
+
     Args:
         model_path: Model path or HuggingFace repo ID
-        
+
     Returns:
         Normalized model name for directory
-        
+
     Examples:
         sshleifer/tiny-gpt2 → tiny-gpt2
         Qwen/Qwen2-7B-Instruct → Qwen2-7B-Instruct
@@ -31,18 +31,18 @@ def normalize_model_name(model_path: str) -> str:
     """
     # Remove leading/trailing slashes
     model_path = model_path.strip("/")
-    
+
     # If it's a HuggingFace repo (contains /), take the last part
     if "/" in model_path:
         model_path = model_path.split("/")[-1]
-    
+
     # If it's a local path, take basename
     if model_path.startswith("/") or model_path.startswith("./"):
         model_path = Path(model_path).name
-    
+
     # Replace special characters
     model_path = model_path.replace(" ", "-").replace("_", "-")
-    
+
     return model_path
 
 
@@ -53,15 +53,15 @@ def create_output_directory(
     custom_path: str | None = None,
 ) -> tuple[Path, dict]:
     """Create hierarchical output directory.
-    
+
     Directory structure: outputs/<backend>/<model>/<workload_YYYYMMDD_NNN>/
-    
+
     Args:
         backend: Backend name (cpu, cuda, vllm, etc.)
         model: Model name/path
         workload: Workload type (m1, short, long, stress)
         custom_path: User-specified output path (optional)
-        
+
     Returns:
         Tuple of (output_path, metadata_dict)
     """
@@ -70,37 +70,37 @@ def create_output_directory(
         output_dir = Path(custom_path)
         output_dir.mkdir(parents=True, exist_ok=True)
         return output_dir, {"custom_output": True}
-    
+
     # Standard hierarchical structure
     outputs_root = Path("outputs")
     model_name = normalize_model_name(model)
-    
+
     # Create backend/model directory
     backend_model_dir = outputs_root / backend / model_name
     backend_model_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Find next sequence number for today
     today = datetime.now().strftime("%Y%m%d")
     existing_runs = list(backend_model_dir.glob(f"{workload}_{today}_*"))
     seq_num = len(existing_runs) + 1
-    
+
     # Create run directory: workload_YYYYMMDD_NNN
     run_id = f"{workload}_{today}_{seq_num:03d}"
     output_dir = backend_model_dir / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Create/update 'latest' symlink in backend/model directory
     latest_link = backend_model_dir / "latest"
     if latest_link.exists() or latest_link.is_symlink():
         latest_link.unlink()
-    
+
     try:
         # Create relative symlink
         latest_link.symlink_to(run_id)
     except OSError:
         # Windows may not support symlinks
         pass
-    
+
     metadata = {
         "run_id": run_id,
         "backend": backend,
@@ -109,7 +109,7 @@ def create_output_directory(
         "date": today,
         "sequence": seq_num,
     }
-    
+
     return output_dir, metadata
 
 
@@ -123,7 +123,7 @@ def save_run_config(
     metadata: dict,
 ) -> None:
     """Save run configuration to config.json.
-    
+
     Args:
         output_dir: Output directory path
         backend: Backend name
@@ -135,6 +135,7 @@ def save_run_config(
     """
     try:
         import importlib.metadata
+
         versions = {
             "sagellm_benchmark": importlib.metadata.version("isagellm-benchmark"),
             "sagellm_core": importlib.metadata.version("isagellm-core"),
@@ -142,7 +143,7 @@ def save_run_config(
         }
     except Exception:
         versions = {}
-    
+
     config = {
         **metadata,
         "timestamp": datetime.now().isoformat(),
@@ -151,11 +152,11 @@ def save_run_config(
         "num_samples": num_samples,
         "versions": versions,
     }
-    
+
     config_file = output_dir / "config.json"
     with open(config_file, "w") as f:
         json.dump(config, f, indent=2)
-    
+
     console.print(f"[dim]Saved config: {config_file}[/dim]")
 
 
@@ -240,7 +241,7 @@ def run(
     console.print(f"Model: {model}")
     console.print(f"Dataset: {dataset}")
     console.print(f"Mode: {mode}")
-    
+
     # Create hierarchical output directory
     output_dir, metadata = create_output_directory(backend, model or "default", workload, output)
     console.print(f"[bold green]Output:[/bold green] {output_dir}\n")
@@ -261,6 +262,7 @@ def run(
     if dataset == "sharegpt":
         console.print("Loading ShareGPT dataset from HuggingFace...")
         from sagellm_benchmark.datasets import ShareGPTDataset
+
         try:
             dataset_instance = ShareGPTDataset.from_huggingface(
                 repo_id="anon8231489123/ShareGPT_Vicuna_unfiltered",
@@ -277,6 +279,7 @@ def run(
     elif dataset == "synthetic":
         console.print("Using synthetic ShareGPT-style prompts...")
         from sagellm_benchmark.datasets import SyntheticShareGPTDataset
+
         dataset_instance = SyntheticShareGPTDataset(seed=42)
         console.print("✓ Synthetic dataset ready")
 
@@ -291,7 +294,7 @@ def run(
     else:
         console.print(f"[bold red]Unknown workload:[/bold red] {workload}")
         sys.exit(1)
-    
+
     # Override num_requests if using dataset
     if dataset_instance is not None:
         for w in workloads:
@@ -316,10 +319,10 @@ def run(
             max_new_tokens=128,
             trust_remote_code=True,
         )
-        
+
         # Create engine
         engine = LLMEngine(engine_config)
-        
+
         # Start engine
         console.print(f"[dim]Starting engine with model: {model}[/dim]")
         asyncio.run(engine.start())
@@ -346,7 +349,7 @@ def run(
         dataset=dataset_instance,  # Pass dataset to runner
         mode=mode,  # Pass benchmark mode
     )
-    
+
     # Save run configuration
     save_run_config(
         output_dir, backend, model or "default", workload, dataset, num_samples, metadata
@@ -365,24 +368,26 @@ def run(
         _display_results(results)
 
         console.print(f"\n[bold]Results saved to:[/bold] {output_dir}")
-        
+
         # Save to custom JSON output if specified
         if output_json:
             import json
+
             output_json_path = Path(output_json)
             output_json_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Convert results to serializable format
             json_results = {}
             for name, metrics in results.items():
                 from dataclasses import asdict
+
                 json_results[name] = asdict(metrics)
-            
+
             with open(output_json_path, "w") as f:
                 json.dump(json_results, f, indent=2)
-            
+
             console.print(f"[bold]Additional JSON output:[/bold] {output_json_path}")
-        
+
         # Show latest link if not custom output
         if not metadata.get("custom_output"):
             latest_path = output_dir.parent / "latest"
@@ -395,6 +400,131 @@ def run(
 
             traceback.print_exc()
         sys.exit(1)
+
+
+@main.command()
+@click.option(
+    "--type",
+    "benchmark_type",
+    type=click.Choice(["operator", "e2e"]),
+    default="operator",
+    help="Performance benchmark type.",
+)
+@click.option(
+    "--device",
+    type=str,
+    default="cpu",
+    help="Execution device for operator benchmark (e.g., cpu, cuda).",
+)
+@click.option(
+    "--iterations",
+    type=int,
+    default=20,
+    help="Benchmark iterations for operator benchmark.",
+)
+@click.option(
+    "--warmup",
+    type=int,
+    default=5,
+    help="Warmup iterations for operator benchmark.",
+)
+@click.option(
+    "--model",
+    "models",
+    multiple=True,
+    default=("Qwen/Qwen2-7B-Instruct",),
+    help="Model(s) for e2e benchmarks. Repeat for multiple models.",
+)
+@click.option(
+    "--batch-size",
+    "batch_sizes",
+    multiple=True,
+    type=int,
+    default=(1, 4, 8),
+    help="Batch sizes for e2e benchmark. Repeat for multiple values.",
+)
+@click.option(
+    "--simulate/--live",
+    default=True,
+    help="Run e2e benchmark in deterministic simulation mode (default) or live mode.",
+)
+@click.option(
+    "--output-json",
+    type=click.Path(),
+    default="./benchmark_results/perf_results.json",
+    help="Path to save performance JSON result.",
+)
+@click.option(
+    "--output-markdown",
+    type=click.Path(),
+    default="./benchmark_results/perf_report.md",
+    help="Path to save performance markdown report.",
+)
+def perf(
+    benchmark_type: str,
+    device: str,
+    iterations: int,
+    warmup: int,
+    models: tuple[str, ...],
+    batch_sizes: tuple[int, ...],
+    simulate: bool,
+    output_json: str,
+    output_markdown: str,
+) -> None:
+    """Run performance benchmarks (operator/e2e) migrated from sagellm-core."""
+    console.print("[bold cyan]sageLLM Performance Benchmark[/bold cyan]")
+    console.print(f"Type: {benchmark_type}")
+
+    if benchmark_type == "operator":
+        from sagellm_benchmark.performance.benchmark_utils import format_comparison_table
+        from sagellm_benchmark.performance.operator_benchmarks import run_operator_benchmarks
+
+        comparisons = run_operator_benchmarks(device=device, iterations=iterations, warmup=warmup)
+        markdown = "# Operator Benchmark Report\n\n" + format_comparison_table(comparisons)
+        result_data = {
+            "kind": "operator",
+            "device": device,
+            "iterations": iterations,
+            "warmup": warmup,
+            "comparisons": comparisons,
+        }
+        console.print("\n" + format_comparison_table(comparisons))
+    else:
+        from sagellm_benchmark.performance.model_benchmarks import (
+            run_e2e_model_benchmarks,
+            summarize_e2e_rows,
+        )
+
+        rows = run_e2e_model_benchmarks(
+            models=list(models),
+            batch_sizes=list(batch_sizes),
+            simulate=simulate,
+        )
+        summary = summarize_e2e_rows(rows)
+        result_data = {
+            "kind": "e2e",
+            "simulate": simulate,
+            "models": list(models),
+            "batch_sizes": list(batch_sizes),
+            "summary": summary,
+            "rows": rows,
+        }
+        markdown = _format_e2e_markdown(result_data)
+        _display_perf_e2e_table(result_data)
+
+    output_json_path = Path(output_json)
+    output_json_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_json_path, "w") as f:
+        json.dump(result_data, f, indent=2)
+
+    output_md_path = Path(output_markdown)
+    output_md_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_md_path, "w") as f:
+        f.write(markdown + "\n")
+
+    console.print("\n[bold green]✓ Performance benchmark completed[/bold green]")
+    console.print(f"JSON: {output_json_path}")
+    console.print(f"Markdown: {output_md_path}")
 
 
 @main.command()
@@ -424,12 +554,101 @@ def report(input: str, format: str) -> None:
         console.print(f"[bold red]Error:[/bold red] Invalid JSON file: {input}")
         sys.exit(1)
 
+    if data.get("kind") == "operator":
+        _display_perf_operator_report(data, format)
+        return
+    if data.get("kind") == "e2e":
+        _display_perf_e2e_report(data, format)
+        return
+
     if format == "table":
         _display_summary_table(data)
     elif format == "json":
         console.print(json.dumps(data, indent=2))
     elif format == "markdown":
         _display_markdown(data)
+
+
+def _display_perf_operator_report(data: dict, format: str) -> None:
+    from sagellm_benchmark.performance.benchmark_utils import format_comparison_table
+
+    if format == "json":
+        console.print(json.dumps(data, indent=2))
+        return
+
+    markdown = "# Operator Benchmark Report\n\n" + format_comparison_table(data["comparisons"])
+    if format == "markdown":
+        console.print(markdown)
+        return
+
+    console.print("[bold cyan]Operator Benchmark Summary[/bold cyan]")
+    console.print(f"Device: {data.get('device', 'unknown')}")
+    console.print(format_comparison_table(data["comparisons"]))
+
+
+def _display_perf_e2e_report(data: dict, format: str) -> None:
+    if format == "json":
+        console.print(json.dumps(data, indent=2))
+        return
+    if format == "markdown":
+        console.print(_format_e2e_markdown(data))
+        return
+    _display_perf_e2e_table(data)
+
+
+def _display_perf_e2e_table(data: dict) -> None:
+    summary = data.get("summary", {})
+    console.print("[bold cyan]E2E Benchmark Summary[/bold cyan]")
+    console.print(f"Rows: {summary.get('total_rows', 0)}")
+    console.print(f"Avg TTFT (ms): {summary.get('avg_ttft_ms', 0.0):.2f}")
+    console.print(f"Avg TBT (ms): {summary.get('avg_tbt_ms', 0.0):.2f}")
+    console.print(f"Avg Throughput (tok/s): {summary.get('avg_throughput_tps', 0.0):.2f}\n")
+
+    table = Table(title="E2E Scenario Results")
+    table.add_column("Model", style="cyan")
+    table.add_column("Scenario")
+    table.add_column("Batch", justify="right")
+    table.add_column("TTFT(ms)", justify="right")
+    table.add_column("TBT(ms)", justify="right")
+    table.add_column("TPS", justify="right")
+    table.add_column("P95(ms)", justify="right")
+
+    for row in data.get("rows", []):
+        table.add_row(
+            str(row.get("model", "")),
+            str(row.get("scenario", "")),
+            str(row.get("batch_size", "")),
+            f"{float(row.get('ttft_ms', 0.0)):.2f}",
+            f"{float(row.get('tbt_ms', 0.0)):.2f}",
+            f"{float(row.get('throughput_tps', 0.0)):.2f}",
+            f"{float(row.get('latency_p95_ms', 0.0)):.2f}",
+        )
+    console.print(table)
+
+
+def _format_e2e_markdown(data: dict) -> str:
+    summary = data.get("summary", {})
+    lines = [
+        "# E2E Benchmark Report",
+        "",
+        "## Summary",
+        f"- Rows: {summary.get('total_rows', 0)}",
+        f"- Avg TTFT (ms): {summary.get('avg_ttft_ms', 0.0):.2f}",
+        f"- Avg TBT (ms): {summary.get('avg_tbt_ms', 0.0):.2f}",
+        f"- Avg Throughput (tok/s): {summary.get('avg_throughput_tps', 0.0):.2f}",
+        "",
+        "## Results",
+        "",
+        "| Model | Scenario | Batch | TTFT(ms) | TBT(ms) | TPS | P95(ms) |",
+        "|-------|----------|-------|----------|---------|-----|---------|",
+    ]
+    for row in data.get("rows", []):
+        lines.append(
+            f"| {row.get('model', '')} | {row.get('scenario', '')} | {row.get('batch_size', '')} | "
+            f"{float(row.get('ttft_ms', 0.0)):.2f} | {float(row.get('tbt_ms', 0.0)):.2f} | "
+            f"{float(row.get('throughput_tps', 0.0)):.2f} | {float(row.get('latency_p95_ms', 0.0)):.2f} |"
+        )
+    return "\n".join(lines)
 
 
 def _display_results(results: dict) -> None:
@@ -456,10 +675,10 @@ def _display_results(results: dict) -> None:
         )
 
     console.print(table)
-    
+
     # Display throughput benchmark metrics (aligned with vLLM/SGLang)
     console.print("\n[bold cyan]Throughput Metrics (vLLM/SGLang Compatible)[/bold cyan]")
-    
+
     for name, metrics in results.items():
         console.print(f"\n[bold]{name}:[/bold]")
         console.print(f"  Request Throughput:  {metrics.request_throughput_rps:>8.2f} req/s")
@@ -527,13 +746,13 @@ def _display_markdown(data: dict) -> None:
 @main.command()
 def aggregate():
     """聚合本地 benchmark 结果并准备上传到 Hugging Face.
-    
+
     工作流程:
     1. 从 HF 下载最新的公开数据（无需 token）
     2. 扫描本地 outputs/ 目录的新结果
     3. 智能合并（去重，选性能更好的）
     4. 保存到 hf_data/ 目录
-    
+
     之后用户可以:
         git add hf_data/
         git commit -m "feat: add benchmark results"
@@ -541,22 +760,19 @@ def aggregate():
     """
     import subprocess
     from pathlib import Path
-    
+
     # 找到 aggregate_for_hf.py 脚本
     script_dir = Path(__file__).parent.parent.parent.parent / "scripts"
     aggregate_script = script_dir / "aggregate_for_hf.py"
-    
+
     if not aggregate_script.exists():
         console.print(f"[red]❌ 未找到聚合脚本: {aggregate_script}[/red]")
         console.print("[yellow]💡 请确保在 sagellm-benchmark 仓库根目录运行[/yellow]")
         sys.exit(1)
-    
+
     # 运行聚合脚本
     try:
-        subprocess.run(
-            [sys.executable, str(aggregate_script)],
-            check=True
-        )
+        subprocess.run([sys.executable, str(aggregate_script)], check=True)
     except subprocess.CalledProcessError as e:
         console.print(f"[red]❌ 聚合失败: {e}[/red]")
         sys.exit(1)

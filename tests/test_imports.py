@@ -31,3 +31,11 @@ def test_import_metrics():
     from sagellm_benchmark import metrics
 
     assert hasattr(metrics, "__name__")
+
+
+def test_import_performance_modules():
+    """Test performance modules can be imported."""
+    from sagellm_benchmark.performance import benchmark_utils, model_benchmarks
+
+    assert hasattr(benchmark_utils, "benchmark_function")
+    assert hasattr(model_benchmarks, "run_e2e_model_benchmarks")
