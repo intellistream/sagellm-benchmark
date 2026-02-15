@@ -134,6 +134,28 @@ pip install -e .[dev,all-clients]
 pytest tests/
 ```
 
+### Performance Regression Check (CI)
+
+```bash
+# Generate current perf snapshot
+sagellm-benchmark perf \
+   --type e2e \
+   --model Qwen/Qwen2-7B-Instruct \
+   --batch-size 1 --batch-size 4 --batch-size 8 \
+   --precision fp16 --precision int8 \
+   --output-json benchmark_results/perf_current.json \
+   --output-markdown benchmark_results/perf_current.md
+
+# Compare current snapshot with baseline
+python scripts/compare_performance_baseline.py \
+   --baseline benchmarks/baselines/perf_baseline_e2e.json \
+   --current benchmark_results/perf_current.json \
+   --warning-threshold 5 \
+   --critical-threshold 10 \
+   --summary-json benchmark_results/perf_comparison_summary.json \
+   --report-md benchmark_results/perf_comparison_report.md
+```
+
 ### Code Quality
 
 ```bash

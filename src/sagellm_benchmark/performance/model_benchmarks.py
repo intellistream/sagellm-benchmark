@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from hashlib import sha256
 from statistics import mean
 from typing import Any
 
@@ -47,7 +48,7 @@ def run_e2e_model_benchmarks(
                         "Live E2E benchmark mode is not enabled yet in sagellm-benchmark."
                     )
 
-                seed = hash((model, precision, scenario.name)) % (2**32)
+                seed = _stable_seed(model, precision, scenario.name)
                 rng = random.Random(seed)
 
                 model_factor = 1.2 if "Llama" in model else (0.9 if "Phi" in model else 1.0)
@@ -101,6 +102,12 @@ def run_e2e_model_benchmarks(
                 )
 
     return rows
+
+
+def _stable_seed(*parts: str) -> int:
+    joined = "::".join(parts)
+    digest = sha256(joined.encode("utf-8")).hexdigest()
+    return int(digest[:8], 16)
 
 
 def _percentile(values: list[float], p: float) -> float:

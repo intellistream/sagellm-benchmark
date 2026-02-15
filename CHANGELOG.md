@@ -16,11 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 新增 `sagellm_benchmark.performance.plotting`，支持折线图/柱状图/热力图
   - 支持导出 `png` / `pdf`，支持 `light` / `dark` 主题与 `--dpi`
   - `perf` / `report` 命令均支持 `--plot` 生成图表
+- Issue #47: CI 性能回归自动检测
+  - 新增基准线文件：`benchmarks/baselines/perf_baseline_e2e.json`
+  - 新增回归对比脚本：`scripts/compare_performance_baseline.py`
+  - 新增 CI workflow：`.github/workflows/performance-regression.yml`
+  - 支持阈值分级：Critical >10%，Warning 5-10%，Acceptable <5%
+  - 支持 PR 自动评论告警与性能报告 artifact 上传
 
 ### Changed
 - 扩展 `report` 命令，支持读取 `perf` 产物（operator/e2e JSON）并输出 table/json/markdown
 - 更新 README，补充性能基准命令示例与报告示例
 - 扩展 e2e 性能数据维度，新增 `precision` 字段用于模型×精度热力图
+- 修复 e2e 模拟基准种子策略，改为稳定哈希，确保 CI 基准对比可复现
 
 ### Fixed
 - 修复 agent 指令中的命令错误（sage-dev gh → sagellm-dev gh）
