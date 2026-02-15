@@ -12,10 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 新增 `sagellm_benchmark.performance` 模块（`benchmark_utils`、`operator_benchmarks`、`model_benchmarks`）
   - 新增 CLI 子命令：`sagellm-benchmark perf --type operator|e2e`
   - 新增性能相关测试：`tests/test_performance_utils.py`、`tests/test_performance_cli.py`
+- Issue #46: 性能对比可视化图表生成
+  - 新增 `sagellm_benchmark.performance.plotting`，支持折线图/柱状图/热力图
+  - 支持导出 `png` / `pdf`，支持 `light` / `dark` 主题与 `--dpi`
+  - `perf` / `report` 命令均支持 `--plot` 生成图表
 
 ### Changed
 - 扩展 `report` 命令，支持读取 `perf` 产物（operator/e2e JSON）并输出 table/json/markdown
 - 更新 README，补充性能基准命令示例与报告示例
+- 扩展 e2e 性能数据维度，新增 `precision` 字段用于模型×精度热力图
 
 ### Fixed
 - 修复 agent 指令中的命令错误（sage-dev gh → sagellm-dev gh）

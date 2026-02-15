@@ -35,7 +35,8 @@ def test_import_metrics():
 
 def test_import_performance_modules():
     """Test performance modules can be imported."""
-    from sagellm_benchmark.performance import benchmark_utils, model_benchmarks
+    from sagellm_benchmark.performance import benchmark_utils, model_benchmarks, plotting
 
     assert hasattr(benchmark_utils, "benchmark_function")
     assert hasattr(model_benchmarks, "run_e2e_model_benchmarks")
+    assert hasattr(plotting, "generate_perf_charts")

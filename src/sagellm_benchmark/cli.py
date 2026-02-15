@@ -444,6 +444,13 @@ def run(
     help="Batch sizes for e2e benchmark. Repeat for multiple values.",
 )
 @click.option(
+    "--precision",
+    "precisions",
+    multiple=True,
+    default=("fp16", "int8"),
+    help="Precisions for e2e benchmark. Repeat for multiple values.",
+)
+@click.option(
     "--simulate/--live",
     default=True,
     help="Run e2e benchmark in deterministic simulation mode (default) or live mode.",
@@ -460,6 +467,31 @@ def run(
     default="./benchmark_results/perf_report.md",
     help="Path to save performance markdown report.",
 )
+@click.option(
+    "--plot/--no-plot",
+    default=False,
+    help="Generate performance charts.",
+)
+@click.option(
+    "--plot-format",
+    "plot_formats",
+    multiple=True,
+    type=click.Choice(["png", "pdf"]),
+    default=("png",),
+    help="Plot output format(s). Repeat for multiple formats.",
+)
+@click.option(
+    "--theme",
+    type=click.Choice(["light", "dark"]),
+    default="light",
+    help="Chart theme.",
+)
+@click.option(
+    "--dpi",
+    type=int,
+    default=300,
+    help="Chart output DPI.",
+)
 def perf(
     benchmark_type: str,
     device: str,
@@ -467,9 +499,14 @@ def perf(
     warmup: int,
     models: tuple[str, ...],
     batch_sizes: tuple[int, ...],
+    precisions: tuple[str, ...],
     simulate: bool,
     output_json: str,
     output_markdown: str,
+    plot: bool,
+    plot_formats: tuple[str, ...],
+    theme: str,
+    dpi: int,
 ) -> None:
     """Run performance benchmarks (operator/e2e) migrated from sagellm-core."""
     console.print("[bold cyan]sageLLM Performance Benchmark[/bold cyan]")
@@ -498,6 +535,7 @@ def perf(
         rows = run_e2e_model_benchmarks(
             models=list(models),
             batch_sizes=list(batch_sizes),
+            precisions=list(precisions),
             simulate=simulate,
         )
         summary = summarize_e2e_rows(rows)
@@ -506,11 +544,28 @@ def perf(
             "simulate": simulate,
             "models": list(models),
             "batch_sizes": list(batch_sizes),
+            "precisions": list(precisions),
             "summary": summary,
             "rows": rows,
         }
         markdown = _format_e2e_markdown(result_data)
         _display_perf_e2e_table(result_data)
+
+    if plot:
+        from sagellm_benchmark.performance.plotting import generate_perf_charts
+
+        plot_output_dir = Path(output_markdown).parent / "plots"
+        plot_paths = generate_perf_charts(
+            result_data,
+            output_dir=plot_output_dir,
+            formats=list(plot_formats),
+            theme=theme,
+            dpi=dpi,
+        )
+        result_data["plots"] = plot_paths
+        console.print("\n[bold]Generated plots:[/bold]")
+        for path in plot_paths:
+            console.print(f"- {path}")
 
     output_json_path = Path(output_json)
     output_json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -541,7 +596,39 @@ def perf(
     default="table",
     help="Output format.",
 )
-def report(input: str, format: str) -> None:
+@click.option(
+    "--plot/--no-plot",
+    default=False,
+    help="Generate charts when input is a perf JSON.",
+)
+@click.option(
+    "--plot-format",
+    "plot_formats",
+    multiple=True,
+    type=click.Choice(["png", "pdf"]),
+    default=("png",),
+    help="Plot output format(s). Repeat for multiple formats.",
+)
+@click.option(
+    "--theme",
+    type=click.Choice(["light", "dark"]),
+    default="light",
+    help="Chart theme.",
+)
+@click.option(
+    "--dpi",
+    type=int,
+    default=300,
+    help="Chart output DPI.",
+)
+def report(
+    input: str,
+    format: str,
+    plot: bool,
+    plot_formats: tuple[str, ...],
+    theme: str,
+    dpi: int,
+) -> None:
     """Generate report from benchmark results."""
     try:
         with open(input) as f:
@@ -555,9 +642,13 @@ def report(input: str, format: str) -> None:
         sys.exit(1)
 
     if data.get("kind") == "operator":
+        if plot:
+            _generate_plots_for_report(input, data, plot_formats, theme, dpi)
         _display_perf_operator_report(data, format)
         return
     if data.get("kind") == "e2e":
+        if plot:
+            _generate_plots_for_report(input, data, plot_formats, theme, dpi)
         _display_perf_e2e_report(data, format)
         return
 
@@ -607,6 +698,7 @@ def _display_perf_e2e_table(data: dict) -> None:
     table = Table(title="E2E Scenario Results")
     table.add_column("Model", style="cyan")
     table.add_column("Scenario")
+    table.add_column("Precision")
     table.add_column("Batch", justify="right")
     table.add_column("TTFT(ms)", justify="right")
     table.add_column("TBT(ms)", justify="right")
@@ -617,6 +709,7 @@ def _display_perf_e2e_table(data: dict) -> None:
         table.add_row(
             str(row.get("model", "")),
             str(row.get("scenario", "")),
+            str(row.get("precision", "default")),
             str(row.get("batch_size", "")),
             f"{float(row.get('ttft_ms', 0.0)):.2f}",
             f"{float(row.get('tbt_ms', 0.0)):.2f}",
@@ -639,16 +732,39 @@ def _format_e2e_markdown(data: dict) -> str:
         "",
         "## Results",
         "",
-        "| Model | Scenario | Batch | TTFT(ms) | TBT(ms) | TPS | P95(ms) |",
-        "|-------|----------|-------|----------|---------|-----|---------|",
+        "| Model | Scenario | Precision | Batch | TTFT(ms) | TBT(ms) | TPS | P95(ms) |",
+        "|-------|----------|-----------|-------|----------|---------|-----|---------|",
     ]
     for row in data.get("rows", []):
         lines.append(
-            f"| {row.get('model', '')} | {row.get('scenario', '')} | {row.get('batch_size', '')} | "
+            f"| {row.get('model', '')} | {row.get('scenario', '')} | {row.get('precision', 'default')} | "
+            f"{row.get('batch_size', '')} | "
             f"{float(row.get('ttft_ms', 0.0)):.2f} | {float(row.get('tbt_ms', 0.0)):.2f} | "
             f"{float(row.get('throughput_tps', 0.0)):.2f} | {float(row.get('latency_p95_ms', 0.0)):.2f} |"
         )
     return "\n".join(lines)
+
+
+def _generate_plots_for_report(
+    input_path: str,
+    data: dict,
+    plot_formats: tuple[str, ...],
+    theme: str,
+    dpi: int,
+) -> None:
+    from sagellm_benchmark.performance.plotting import generate_perf_charts
+
+    output_dir = Path(input_path).parent / "plots"
+    paths = generate_perf_charts(
+        data,
+        output_dir=output_dir,
+        formats=list(plot_formats),
+        theme=theme,
+        dpi=dpi,
+    )
+    console.print("\n[bold]Generated plots:[/bold]")
+    for path in paths:
+        console.print(f"- {path}")
 
 
 def _display_results(results: dict) -> None:

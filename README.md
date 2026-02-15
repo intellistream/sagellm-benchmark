@@ -60,6 +60,9 @@ sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --fo
 # Run migrated performance benchmarks
 sagellm-benchmark perf --type operator --device cpu
 sagellm-benchmark perf --type e2e --model Qwen/Qwen2-7B-Instruct --batch-size 1 --batch-size 4
+
+# Generate charts (PNG/PDF, dark theme)
+sagellm-benchmark perf --type e2e --plot --plot-format png --plot-format pdf --theme dark
 ```
 
 CLI examples:
@@ -79,6 +82,9 @@ sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --fo
 
 # Generate report from perf JSON
 sagellm-benchmark report --input ./benchmark_results/perf_results.json --format markdown
+
+# Re-generate charts from existing perf JSON
+sagellm-benchmark report --input ./benchmark_results/perf_results.json --plot --plot-format png
 ```
 
 ## Workloads

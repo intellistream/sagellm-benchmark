@@ -58,11 +58,13 @@ def test_run_e2e_model_benchmarks_simulated():
     rows = run_e2e_model_benchmarks(
         models=["Qwen/Qwen2-7B-Instruct"],
         batch_sizes=[1, 4],
+        precisions=["fp16", "int8"],
         simulate=True,
     )
-    assert len(rows) == 4
+    assert len(rows) == 8
     assert all("ttft_ms" in row for row in rows)
+    assert all("precision" in row for row in rows)
 
     summary = summarize_e2e_rows(rows)
-    assert summary["total_rows"] == 4
+    assert summary["total_rows"] == 8
     assert summary["avg_ttft_ms"] > 0
