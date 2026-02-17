@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 包含完整流程图和常见问题解答
 
 ### Changed
+- 发布版本升级至 `0.5.1.0`，并统一 `protocol/core/backend` 依赖约束到 `>=0.5.1.0,<0.6.0`。
 - 扩展 `report` 命令，支持读取 `perf` 产物（operator/e2e JSON）并输出 table/json/markdown
 - 更新 README，补充性能基准命令示例与报告示例
 - 扩展 e2e 性能数据维度，新增 `precision` 字段用于模型×精度热力图
