@@ -22,31 +22,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 新增 CI workflow：`.github/workflows/performance-regression.yml`
   - 支持阈值分级：Critical >10%，Warning 5-10%，Acceptable <5%
   - 支持 PR 自动评论告警与性能报告 artifact 上传
-
-### Changed
-- 扩展 `report` 命令，支持读取 `perf` 产物（operator/e2e JSON）并输出 table/json/markdown
-- 更新 README，补充性能基准命令示例与报告示例
-- 扩展 e2e 性能数据维度，新增 `precision` 字段用于模型×精度热力图
-- 修复 e2e 模拟基准种子策略，改为稳定哈希，确保 CI 基准对比可复现
-
-### Fixed
-- 修复 agent 指令中的命令错误（sage-dev gh → sagellm-dev gh）
-
-### Added
 - agent 指令新增文档规范：禁止创建总结性文档
-
-### Added
 - 新增 `WORKFLOW.md` 文档
   - 清晰说明用户工作流程（运行 → 聚合 → 推送）
   - 详细解释自动化流程（拉取 → 合并 → 上传 → 清理）
   - 包含完整流程图和常见问题解答
 
 ### Changed
+- 扩展 `report` 命令，支持读取 `perf` 产物（operator/e2e JSON）并输出 table/json/markdown
+- 更新 README，补充性能基准命令示例与报告示例
+- 扩展 e2e 性能数据维度，新增 `precision` 字段用于模型×精度热力图
+- 修复 e2e 模拟基准种子策略，改为稳定哈希，确保 CI 基准对比可复现
 - 更新 HuggingFace 数据集仓库地址
   - 从 `wangyao36/sagellm-benchmark-results` 迁移到 `intellistream/sagellm-benchmark-results`
   - 更新所有脚本和配置文件中的仓库引用
 
 ### Fixed
+- 修复 agent 指令中的命令错误（sage-dev gh → sagellm-dev gh）
 - 修复 HuggingFace 数据下载和上传的端点问题
   - 默认使用官方地址 `https://huggingface.co` 替代镜像站
   - 支持环境变量 `HF_ENDPOINT` 自定义端点
@@ -54,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 更新 `scripts/merge_and_upload.py`、`scripts/aggregate_for_hf.py` 和 `scripts/upload_to_hf.py`
   - 修复上传脚本默认使用镜像导致连接超时的问题
   - 移除 GitHub Actions 中硬编码的镜像端点配置
+
+### Removed
+- 暂无变更
 
 ## [0.4.0.0] - 2026-01-30
 

@@ -53,16 +53,18 @@
 - CHANGELOG 已经提供了改动历史
 - 应将精力投入到代码质量和测试，而非重复文档
 
-## �📝 CHANGELOG 更新规则（强制）
+## 📝 CHANGELOG 与自动发布规则（强制）
 
-**🚨 每次推送前必须更新 CHANGELOG.md！**
+**🚨 每次解决 issue 必须更新 CHANGELOG！每次 commit 自动触发发布！**
 
-### 更新 CHANGELOG 的时机
+### 更新规则
 
-- ✅ **必须** 在每次 `git push` 前更新 CHANGELOG.md
+- ✅ **必须** 每次解决一个 issue 时更新 `CHANGELOG.md`
 - ✅ **必须** 在 `[Unreleased]` 部分添加本次改动
 - ✅ **必须** 使用正确的分类（Added/Changed/Fixed/Removed）
-- ✅ **必须** 在版本发布时，将 `[Unreleased]` 改为版本号和日期
+- ✅ **每次** `git push` 到 `main-dev` 通过 pre-push hook 自动触发 PyPI 发布
+- ✅ **自动发布** 会同步更新版本号并生成 release tag
+- ✅ **发布时** `[Unreleased]` 自动替换为版本号与日期
 
 ### CHANGELOG 格式
 
@@ -87,21 +89,21 @@
 ### 示例工作流
 
 ```bash
-# 1. 修改代码
+# 1. 解决 issue 并修改代码
 vim src/sagellm_benchmark/some_file.py
 
 # 2. 更新 CHANGELOG.md（强制！）
 vim CHANGELOG.md
 # 在 [Unreleased] 部分添加：
-# ### Added
-# - 新增 XXX 功能
+# ### Fixed
+# - 修复 issue #123 的问题
 
-# 3. 提交
+# 3. 提交改动
 git add .
-git commit -m "feat: add XXX feature"
+git commit -m "fix: resolve issue #123"
 
-# 4. 推送（pre-push hook 会检查 CHANGELOG）
-git push
+# 4. 推送到 main-dev（自动触发 PyPI 发布）
+git push origin main-dev  # pre-push hook 自动发布
 ```
 
 ## 📦 PyPI 发布流程
