@@ -32,6 +32,7 @@ def run_e2e_model_benchmarks(
     request_timeout: float = 120.0,
     server_wait_s: float = 30.0,
     max_seq_len: int | None = None,
+    max_output_tokens: int | None = None,
 ) -> list[dict[str, Any]]:
     """Run E2E model benchmarks.
 
@@ -51,6 +52,9 @@ def run_e2e_model_benchmarks(
         max_seq_len: Maximum sequence length (prompt + output) the model supports.
             If None, auto-detected from the server; falls back to 1024. Used in
             live mode to clamp prompts so they never exceed the model's context window.
+        max_output_tokens: Hard cap on output tokens per request in live mode.
+            Useful for CPU/slow models where the full scenario output length would exceed
+            the request timeout. E.g. ``--max-output-tokens 16`` for tiny CPU models.
 
     Returns:
         List of result rows with benchmark metrics.
@@ -135,6 +139,7 @@ def run_e2e_model_benchmarks(
                 request_timeout=request_timeout,
                 server_wait_s=server_wait_s,
                 max_seq_len_override=max_seq_len,
+                max_output_tokens_override=max_output_tokens,
             )
         )
 
@@ -210,6 +215,7 @@ async def _run_live_benchmarks(
     request_timeout: float,
     server_wait_s: float = 30.0,
     max_seq_len_override: int | None = None,
+    max_output_tokens_override: int | None = None,
 ) -> list[dict[str, Any]]:
     """Run live E2E benchmarks against a real API server.
 
@@ -221,6 +227,7 @@ async def _run_live_benchmarks(
         request_timeout: Per-request timeout (seconds).
         server_wait_s: Max seconds to wait for server to become ready.
         max_seq_len_override: If set, skip auto-detection and use this value.
+        max_output_tokens_override: Hard cap on output tokens per request.
 
     Returns:
         List of result rows.
@@ -289,9 +296,21 @@ async def _run_live_benchmarks(
         logger.info(f"Effective max_seq_len={max_seq_len} for model '{effective_model}'")
 
         for scenario in scenarios:
+            effective_output_tokens = scenario.output_tokens
+            if (
+                max_output_tokens_override is not None
+                and effective_output_tokens > max_output_tokens_override
+            ):
+                logger.warning(
+                    f"Scenario '{scenario.name}': output_tokens clamped "
+                    f"{scenario.output_tokens} → {max_output_tokens_override} "
+                    "(--max-output-tokens). Metrics reflect this shorter generation."
+                )
+                effective_output_tokens = max_output_tokens_override
+
             effective_prompt_tokens = min(
                 scenario.prompt_tokens,
-                max(10, max_seq_len - scenario.output_tokens - 10),
+                max(10, max_seq_len - effective_output_tokens - 10),
             )
             if effective_prompt_tokens < scenario.prompt_tokens:
                 logger.warning(
@@ -304,7 +323,7 @@ async def _run_live_benchmarks(
                 f"Live benchmark: model={effective_model} scenario={scenario.name} "
                 f"batch_size={scenario.batch_size} "
                 f"prompt_tokens≈{effective_prompt_tokens} "
-                f"output_tokens={scenario.output_tokens}"
+                f"output_tokens={effective_output_tokens}"
             )
             row = await _run_live_scenario(
                 client=client,
@@ -312,6 +331,7 @@ async def _run_live_benchmarks(
                 requested_model=model,
                 scenario=scenario,
                 effective_prompt_tokens=effective_prompt_tokens,
+                effective_output_tokens=effective_output_tokens,
             )
             rows.append(row)
 
@@ -326,6 +346,7 @@ async def _run_live_scenario(
     requested_model: str,
     scenario: Scenario,
     effective_prompt_tokens: int | None = None,
+    effective_output_tokens: int | None = None,
 ) -> dict[str, Any]:
     """Run a single scenario against a live API server.
 
@@ -338,6 +359,8 @@ async def _run_live_scenario(
         scenario: Benchmark scenario definition.
         effective_prompt_tokens: Clamped prompt token count (≤ model context window).
             Defaults to scenario.prompt_tokens if not provided.
+        effective_output_tokens: Clamped output token count (≤ max_output_tokens cap).
+            Defaults to scenario.output_tokens if not provided.
 
     Returns:
         Result row dict compatible with simulate-mode output.
@@ -349,6 +372,9 @@ async def _run_live_scenario(
     prompt_tokens = (
         effective_prompt_tokens if effective_prompt_tokens is not None else scenario.prompt_tokens
     )
+    output_tokens = (
+        effective_output_tokens if effective_output_tokens is not None else scenario.output_tokens
+    )
     words_needed = max(10, int(prompt_tokens / 1.3))
     filler_word = "benchmark"
     prompt = " ".join([filler_word] * words_needed)
@@ -356,7 +382,7 @@ async def _run_live_scenario(
     requests = [
         BenchmarkRequest(
             prompt=prompt,
-            max_tokens=scenario.output_tokens,
+            max_tokens=output_tokens,
             request_id=f"live-{scenario.name}-{i}",
             model=model,
             stream=True,

@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 按 scenario 逐批并发，聚合真实 TTFT/TBT/throughput/latency 指标
 - CLI `perf` 命令新增选项：`--backend-url`、`--api-key`、`--request-timeout`、`--server-wait`
 - live 模式自动开启 INFO 日志，实时显示服务器等待/发现/请求进度
+- CLI `perf` 命令新增选项 `--max-seq-len`：手动指定模型最大上下文窗口，覆盖自动检测值（`/info` → AutoConfig → 1024）
+- CLI `perf` 命令新增选项 `--max-output-tokens`：对 live E2E 模式每个请求的输出 token 数设置硬上限，避免 CPU/慢速模型因单次推理耗时超过 `request_timeout` 而超时（如 tiny-gpt2 CPU 模式建议设置 8-16）
+- `_discover_max_seq_len()`：自动探测模型最大序列长度（`/info` → transformers AutoConfig → fallback 1024）
+- live 模式按 scenario 自动 clamp prompt_tokens / output_tokens 防止超出上下文窗口
 
 ### Fixed
 - `GatewayClient.health_check()`：从 OpenAI SDK `models.list()`（会 404/hang）改为先试 `/health`，再试 `/v1/models`，均使用 httpx 带超时

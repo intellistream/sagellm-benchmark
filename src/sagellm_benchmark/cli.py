@@ -496,6 +496,17 @@ def run(
     ),
 )
 @click.option(
+    "--max-output-tokens",
+    "max_output_tokens",
+    type=int,
+    default=None,
+    help=(
+        "Hard cap on output tokens per request in live e2e mode. "
+        "Use this for CPU/slow models where the full scenario output length would "
+        "exceed the request timeout. E.g. '--max-output-tokens 16' for tiny CPU models."
+    ),
+)
+@click.option(
     "--output-json",
     type=click.Path(),
     default="./benchmark_results/perf_results.json",
@@ -546,6 +557,7 @@ def perf(
     request_timeout: float,
     server_wait_s: float,
     max_seq_len: int | None,
+    max_output_tokens: int | None,
     output_json: str,
     output_markdown: str,
     plot: bool,
@@ -607,6 +619,7 @@ def perf(
             request_timeout=request_timeout,
             server_wait_s=server_wait_s,
             max_seq_len=max_seq_len,
+            max_output_tokens=max_output_tokens,
         )
         summary = summarize_e2e_rows(rows)
         result_data = {
