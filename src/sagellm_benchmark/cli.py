@@ -138,16 +138,7 @@ def save_run_config(
         num_samples: Number of samples
         metadata: Additional metadata from create_output_directory
     """
-    try:
-        import importlib.metadata
-
-        versions = {
-            "sagellm_benchmark": importlib.metadata.version("isagellm-benchmark"),
-            "sagellm_core": importlib.metadata.version("isagellm-core"),
-            "sagellm_backend": importlib.metadata.version("isagellm-backend"),
-        }
-    except Exception:
-        versions = {}
+    versions = collect_installed_versions()
 
     config = {
         **metadata,
@@ -163,6 +154,42 @@ def save_run_config(
         json.dump(config, f, indent=2)
 
     console.print(f"[dim]Saved config: {config_file}[/dim]")
+
+
+def collect_installed_versions() -> dict[str, str]:
+    """Collect installed sageLLM component versions from Python environment.
+
+    Returns:
+        Mapping of internal component keys to installed package versions.
+    """
+    try:
+        import importlib.metadata
+    except Exception:
+        return {}
+
+    package_map = {
+        "sagellm": "isagellm",
+        "sagellm_benchmark": "isagellm-benchmark",
+        "sagellm_protocol": "isagellm-protocol",
+        "sagellm_backend": "isagellm-backend",
+        "sagellm_core": "isagellm-core",
+        "sagellm_kv_cache": "isagellm-kv-cache",
+        "sagellm_control_plane": "isagellm-control-plane",
+        "sagellm_gateway": "isagellm-gateway",
+        "sagellm_comm": "isagellm-comm",
+        "sagellm_compression": "isagellm-compression",
+    }
+
+    versions: dict[str, str] = {}
+    for key, package_name in package_map.items():
+        try:
+            versions[key] = importlib.metadata.version(package_name)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+        except Exception:
+            continue
+
+    return versions
 
 
 @click.group()

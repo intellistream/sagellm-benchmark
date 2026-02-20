@@ -21,13 +21,13 @@ classifiers = [
 dependencies = [
     # Core sagellm dependencies
     "isagellm-protocol>=0.5.1.0,<0.6.0",
-    "isagellm-core>=0.5.1.0,<0.6.0",        # Engine creation and execution
-    "isagellm-backend>=0.5.1.0,<0.6.0",     # Backend providers (CPU/CUDA/etc)
+    "isagellm-core>=0.5.1.0,<0.6.0",     # Engine creation and execution
+    "isagellm-backend>=0.5.1.0,<0.6.0",  # Backend providers (CPU/CUDA/etc)
     # CLI dependencies
     "click>=8.0.0",
     "rich>=13.0.0",
     # Dataset loading
-    "datasets>=2.14.0",                      # HuggingFace datasets for ShareGPT
+    "datasets>=2.14.0", # HuggingFace datasets for ShareGPT
     # Data validation (optional, for schema validation)
     "jsonschema>=4.0.0",
     # Standard API client for OpenAI-compatible benchmarking

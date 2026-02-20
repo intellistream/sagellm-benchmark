@@ -106,7 +106,7 @@ def get_config_key(entry: dict) -> str:
     """
     生成配置唯一标识 key
 
-    相同配置 = 相同硬件 + 相同模型 + 相同 workload + 相同精度
+    相同配置 = 相同硬件 + 相同模型 + 相同 workload + 相同精度 + 相同版本
     """
     hw = entry.get("hardware", {})
     model = entry.get("model", {})
@@ -121,6 +121,7 @@ def get_config_key(entry: dict) -> str:
         model.get("precision", "FP16"),
         str(workload.get("input_length", 0)),
         str(workload.get("output_length", 0)),
+        str(entry.get("sagellm_version") or entry.get("versions", {}).get("benchmark") or "unknown"),
     ]
 
     # 如果是多节点，加入节点信息
