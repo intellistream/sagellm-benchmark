@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isagellm-benchmark"
-version = "0.5.1.3"
+version = "0.5.1.4"
 description = "Benchmark Suite & E2E Testing for sageLLM"
 readme = "README.md"
 requires-python = ">=3.10"
