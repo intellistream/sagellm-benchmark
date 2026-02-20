@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
+import re
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -957,6 +960,123 @@ def _display_markdown(data: dict) -> None:
         )
 
 
+def _normalize_key_part(value: str | int | None) -> str:
+    """Normalize one idempotency key part."""
+    raw = str(value or "unknown").strip().lower()
+    normalized = re.sub(r"[^a-z0-9._-]+", "-", raw)
+    normalized = re.sub(r"-+", "-", normalized).strip("-")
+    return normalized or "unknown"
+
+
+def _extract_workload_for_key(entry: dict) -> str:
+    """Extract workload name for idempotency key construction."""
+    direct = (
+        entry.get("workload", {}).get("name")
+        or entry.get("workload_name")
+        or entry.get("metadata", {}).get("workload")
+    )
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip().upper()
+
+    notes = str(entry.get("metadata", {}).get("notes") or "")
+    q_match = re.search(r"\bQ([1-8])\b", notes, flags=re.IGNORECASE)
+    if q_match:
+        return f"Q{q_match.group(1)}"
+
+    return "LEGACY"
+
+
+def build_idempotency_key(entry: dict) -> str:
+    """Build idempotency key for one leaderboard entry.
+
+    Key dimensions:
+    - sagellm version
+    - workload
+    - model name
+    - precision
+    - hardware model/count
+    - node count
+    - config type
+    """
+    parts = [
+        _normalize_key_part(entry.get("sagellm_version")),
+        _normalize_key_part(_extract_workload_for_key(entry)),
+        _normalize_key_part(entry.get("model", {}).get("name")),
+        _normalize_key_part(entry.get("model", {}).get("precision")),
+        _normalize_key_part(entry.get("hardware", {}).get("chip_model")),
+        _normalize_key_part(entry.get("hardware", {}).get("chip_count")),
+        _normalize_key_part(entry.get("cluster", {}).get("node_count", 1)),
+        _normalize_key_part(entry.get("config_type")),
+    ]
+    return "|".join(parts)
+
+
+def build_canonical_path(entry: dict) -> str:
+    """Build canonical dataset path from idempotency key."""
+    key = build_idempotency_key(entry)
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:20]
+    return f"canonical/{digest}_leaderboard.json"
+
+
+def _parse_entry_time(entry: dict) -> tuple[datetime | None, datetime | None]:
+    """Parse submitted_at and release_date from leaderboard entry metadata."""
+    metadata = entry.get("metadata", {}) if isinstance(entry, dict) else {}
+    submitted_raw = metadata.get("submitted_at")
+    release_raw = metadata.get("release_date")
+
+    submitted_dt = None
+    if isinstance(submitted_raw, str) and submitted_raw:
+        try:
+            submitted_dt = datetime.fromisoformat(submitted_raw.replace("Z", "+00:00"))
+        except ValueError:
+            submitted_dt = None
+
+    release_dt = None
+    if isinstance(release_raw, str) and release_raw:
+        try:
+            release_dt = datetime.fromisoformat(release_raw)
+        except ValueError:
+            release_dt = None
+
+    return submitted_dt, release_dt
+
+
+def _prefer_newer_entry(current: dict, candidate: dict) -> dict:
+    """Pick preferred entry between two same-idempotency-key candidates."""
+    current_submitted, current_release = _parse_entry_time(current)
+    candidate_submitted, candidate_release = _parse_entry_time(candidate)
+
+    if current_submitted and candidate_submitted and candidate_submitted != current_submitted:
+        return candidate if candidate_submitted > current_submitted else current
+    if current_submitted is None and candidate_submitted is not None:
+        return candidate
+    if current_submitted is not None and candidate_submitted is None:
+        return current
+
+    if current_release and candidate_release and candidate_release != current_release:
+        return candidate if candidate_release > current_release else current
+    if current_release is None and candidate_release is not None:
+        return candidate
+    if current_release is not None and candidate_release is None:
+        return current
+
+    current_tps = float(current.get("metrics", {}).get("throughput_tps") or 0.0)
+    candidate_tps = float(candidate.get("metrics", {}).get("throughput_tps") or 0.0)
+    if candidate_tps != current_tps:
+        return candidate if candidate_tps > current_tps else current
+
+    return current
+
+
+def _normalize_entries_payload(payload: dict | list) -> list[dict]:
+    """Normalize leaderboard JSON payload to a list of entries."""
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        return [payload]
+    return []
+
+
 @main.command()
 @click.option(
     "--dataset",
@@ -986,7 +1106,7 @@ def _display_markdown(data: dict) -> None:
 def upload_hf(dataset: str, input_dir: str, token: str | None, private: bool) -> None:
     """Upload benchmark leaderboard files to Hugging Face dataset."""
     try:
-        from huggingface_hub import HfApi
+        from huggingface_hub import HfApi, hf_hub_download
     except ImportError:
         console.print("[red]❌ missing dependency: huggingface_hub[/red]")
         console.print("Install with: [cyan]pip install huggingface_hub[/cyan]")
@@ -1020,10 +1140,48 @@ def upload_hf(dataset: str, input_dir: str, token: str | None, private: bool) ->
 
     console.print(f"[cyan]Endpoint:[/cyan] {hf_endpoint}")
     console.print(
-        f"[cyan]Uploading[/cyan] {len(leaderboard_files)} leaderboard files from {input_path}"
+        f"[cyan]Scanning[/cyan] {len(leaderboard_files)} leaderboard files from {input_path}"
+    )
+
+    canonical_entries: dict[str, dict] = {}
+    parse_errors: list[str] = []
+    for file_path in leaderboard_files:
+        try:
+            with open(file_path) as f:
+                payload = json.load(f)
+        except Exception as exc:
+            parse_errors.append(f"{file_path}: {exc}")
+            continue
+
+        for entry in _normalize_entries_payload(payload):
+            key = build_idempotency_key(entry)
+            entry_with_key = json.loads(json.dumps(entry))
+            metadata = entry_with_key.setdefault("metadata", {})
+            metadata["idempotency_key"] = key
+            entry_with_key["canonical_path"] = build_canonical_path(entry_with_key)
+
+            existing = canonical_entries.get(key)
+            canonical_entries[key] = (
+                _prefer_newer_entry(existing, entry_with_key) if existing else entry_with_key
+            )
+
+    if parse_errors:
+        console.print("[yellow]⚠ Some files could not be parsed and were skipped:[/yellow]")
+        for error in parse_errors:
+            console.print(f"  - {error}")
+
+    if not canonical_entries:
+        console.print("[red]❌ No valid leaderboard entries found for upload[/red]")
+        sys.exit(1)
+
+    console.print(
+        f"[cyan]Idempotent entries:[/cyan] {len(canonical_entries)} "
+        f"(from {len(leaderboard_files)} files)"
     )
 
     upload_errors: list[str] = []
+    skipped_count = 0
+    uploaded_count = 0
     with Progress(
         SpinnerColumn(),
         TextColumn("{task.description}"),
@@ -1031,18 +1189,51 @@ def upload_hf(dataset: str, input_dir: str, token: str | None, private: bool) ->
         TextColumn("{task.completed}/{task.total}"),
         console=console,
     ) as progress:
-        task = progress.add_task("Uploading files", total=len(leaderboard_files))
+        task = progress.add_task("Uploading canonical entries", total=len(canonical_entries))
 
-        for file_path in leaderboard_files:
-            path_in_repo = str(file_path.relative_to(input_path)).replace("\\", "/")
+        for key, entry in canonical_entries.items():
+            path_in_repo = entry["canonical_path"]
             try:
+                local_is_newer = True
+                try:
+                    remote_file = hf_hub_download(
+                        repo_id=dataset,
+                        filename=path_in_repo,
+                        repo_type="dataset",
+                        token=resolved_token,
+                        endpoint=hf_endpoint,
+                    )
+                    with open(remote_file) as f:
+                        remote_payload = json.load(f)
+                    remote_entries = _normalize_entries_payload(remote_payload)
+                    if remote_entries:
+                        preferred = _prefer_newer_entry(remote_entries[0], entry)
+                        local_is_newer = preferred is entry
+                except Exception:
+                    local_is_newer = True
+
+                if not local_is_newer:
+                    skipped_count += 1
+                    continue
+
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", encoding="utf-8", delete=False
+                ) as temp_file:
+                    json.dump(entry, temp_file, indent=2)
+                    temp_path = temp_file.name
+
                 api.upload_file(
-                    path_or_fileobj=str(file_path),
+                    path_or_fileobj=temp_path,
                     path_in_repo=path_in_repo,
                     repo_id=dataset,
                     repo_type="dataset",
-                    commit_message=f"Update {path_in_repo} - {datetime.now().isoformat()}",
+                    commit_message=(
+                        f"Upsert canonical leaderboard {path_in_repo} "
+                        f"({datetime.now().isoformat()})"
+                    ),
                 )
+                uploaded_count += 1
+                Path(temp_path).unlink(missing_ok=True)
             except Exception as exc:  # pragma: no cover - network/runtime dependent
                 upload_errors.append(f"{path_in_repo}: {exc}")
             finally:
@@ -1055,6 +1246,8 @@ def upload_hf(dataset: str, input_dir: str, token: str | None, private: bool) ->
         sys.exit(1)
 
     console.print("[bold green]✅ Upload complete![/bold green]")
+    console.print(f"[green]Uploaded:[/green] {uploaded_count}")
+    console.print(f"[yellow]Skipped (remote newer/same):[/yellow] {skipped_count}")
     console.print(f"🔗 https://huggingface.co/datasets/{dataset}")
 
 

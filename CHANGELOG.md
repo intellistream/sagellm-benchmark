@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 递归上传 `*_leaderboard.json` 文件到 HuggingFace Dataset
   - 支持 `HF_TOKEN` 环境变量回退与 rich 上传进度条
 - 新增测试：`tests/test_workloads.py`（Q workload 选择器与兼容性）
+- 新增测试：`tests/test_upload_idempotency.py`（上传幂等键、canonical 路径和去重优先级）
 
 - `scripts/publish_pipeline.sh`: 一键发布流水线脚本，自动完成「运行基准测试 → 聚合结果 → 上传 HuggingFace → 触发 website 刷新」全流程
   - 支持 `--model`, `--workload`, `--backend`, `--backend-url` 参数
@@ -45,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - live 模式按 scenario 自动 clamp prompt_tokens / output_tokens 防止超出上下文窗口
 
 ### Fixed
+- `upload-hf` 改为幂等上传：基于 `version+workload+model+hardware+precision+config` 生成 idempotency key，写入 canonical 路径并执行 upsert，避免同版本重复上传导致数据膨胀
+- `upload-hf` 支持与远端 canonical 文件比较，远端更新时跳过上传，防止旧结果覆盖新结果
 - `GatewayClient.health_check()`：从 OpenAI SDK `models.list()`（会 404/hang）改为先试 `/health`，再试 `/v1/models`，均使用 httpx 带超时
 - `GatewayClient` 新增 `discover_model()` 方法：通过 `/info` 或 `/v1/models` 获取服务器实际加载的模型名称
 - live 模式 prompt/output token 数 clamp 修复 `IndexError: index out of range in self`（短上下文模型如 sshleifer/tiny-gpt2 位置编码上限 1024，long_b1 scenario 默认 2048 prompt tokens 越界）
