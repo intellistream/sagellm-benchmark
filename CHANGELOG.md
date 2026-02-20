@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `GatewayClient.health_check()`：从 OpenAI SDK `models.list()`（会 404/hang）改为先试 `/health`，再试 `/v1/models`，均使用 httpx 带超时
 - `GatewayClient` 新增 `discover_model()` 方法：通过 `/info` 或 `/v1/models` 获取服务器实际加载的模型名称
+- live 模式 prompt/output token 数 clamp 修复 `IndexError: index out of range in self`（短上下文模型如 sshleifer/tiny-gpt2 位置编码上限 1024，long_b1 scenario 默认 2048 prompt tokens 越界）
 
 ## [0.5.1.2] - 2025-07-25
 
