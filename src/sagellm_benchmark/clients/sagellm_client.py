@@ -50,9 +50,7 @@ class SageLLMClient(BenchmarkClient):
         try:
             from sagellm_core import LLMEngine
         except ImportError:
-            raise ImportError(
-                "sagellm-core not installed. Install with: pip install isagellm-core"
-            )
+            raise ImportError("sagellm-core not installed. Install with: pip install isagellm-core")
 
         # Verify engine type
         if isinstance(engine, LLMEngine):
@@ -136,6 +134,8 @@ class SageLLMClient(BenchmarkClient):
                     spec_accept_rate=0.0,
                 )
 
+            # metrics.timestamps 由 llm_engine 直接填充，无需从 response.timestamps 手动注入
+
             # Extract output (adapt field names)
             output_text = ""
             if hasattr(response, "output_text"):
@@ -145,11 +145,25 @@ class SageLLMClient(BenchmarkClient):
 
             output_tokens_count = 0
             if hasattr(response, "output_tokens") and response.output_tokens:
-                output_tokens_count = len(response.output_tokens) if isinstance(response.output_tokens, list) else response.output_tokens
+                output_tokens_count = (
+                    len(response.output_tokens)
+                    if isinstance(response.output_tokens, list)
+                    else response.output_tokens
+                )
 
+            # 优先从 response.prompt_tokens 获取，若为 None 则用 request.prompt 词数估算
             prompt_tokens = 0
-            if hasattr(response, "prompt_tokens"):
+            if hasattr(response, "prompt_tokens") and response.prompt_tokens is not None:
                 prompt_tokens = response.prompt_tokens
+            elif request.prompt:
+                prompt_tokens = len(request.prompt.split())
+
+            # 从 metrics.timestamps 计算 e2e 延迟（ms）
+            e2e_latency_ms = 0.0
+            if metrics is not None and metrics.timestamps is not None:
+                ts = metrics.timestamps
+                if ts.queued_at > 0 and ts.completed_at > 0:
+                    e2e_latency_ms = (ts.completed_at - ts.queued_at) * 1000.0
 
             return BenchmarkResult(
                 request_id=request.request_id,
@@ -159,6 +173,7 @@ class SageLLMClient(BenchmarkClient):
                 output_text=output_text,
                 output_tokens=output_tokens_count,
                 prompt_tokens=prompt_tokens,
+                e2e_latency_ms=e2e_latency_ms,
             )
 
         except Exception as e:
