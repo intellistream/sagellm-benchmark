@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `model_benchmarks.py`：实现 live E2E benchmark 模式（`--live` flag）
+  - `run_e2e_model_benchmarks` 新增 `backend_url`、`api_key`、`request_timeout`、`server_wait_s` 参数
+  - `simulate=False` 时通过 `GatewayClient`（OpenAI 兼容协议）向真实 API 服务器发送并发请求
+  - 自动执行 server ready 等待（最多 `server_wait_s` 秒重试），避免服务器正在启动时立刻超时
+  - 自动执行模型名称发现（`/info` + `/v1/models`），当请求 model 与服务器加载 model 不一致时自动覆盖并告警
+  - 按 scenario 逐批并发，聚合真实 TTFT/TBT/throughput/latency 指标
+- CLI `perf` 命令新增选项：`--backend-url`、`--api-key`、`--request-timeout`、`--server-wait`
+- live 模式自动开启 INFO 日志，实时显示服务器等待/发现/请求进度
+
+### Fixed
+- `GatewayClient.health_check()`：从 OpenAI SDK `models.list()`（会 404/hang）改为先试 `/health`，再试 `/v1/models`，均使用 httpx 带超时
+- `GatewayClient` 新增 `discover_model()` 方法：通过 `/info` 或 `/v1/models` 获取服务器实际加载的模型名称
+
+## [0.5.1.2] - 2025-07-25
+
+### Fixed
+- `sagellm_client.py`：修复 vLLM/SGLang 兼容吞吐量指标全为 0.00 的三个 bug
+  - `prompt_tokens`：`response.prompt_tokens` 为 Pydantic 默认 `None` 导致存储 `None`，改为 `is not None` 判断后回落到 request.prompt 词数估算
+  - `total_time_s = 0`：`response.timestamps` 未注入到 `metrics.timestamps`，导致 aggregator 无法计算时间窗口；现通过 `model_copy` 将 `response.timestamps` 复制到 `metrics.timestamps`
+  - `e2e_latency_ms`：新增从 `response.timestamps.queued_at/completed_at` 计算 E2E 延迟并写入 `BenchmarkResult.e2e_latency_ms`
+
+### Added
 - Issue #45: 迁移 sagellm-core 性能测试框架到 sagellm-benchmark
   - 新增 `sagellm_benchmark.performance` 模块（`benchmark_utils`、`operator_benchmarks`、`model_benchmarks`）
   - 新增 CLI 子命令：`sagellm-benchmark perf --type operator|e2e`

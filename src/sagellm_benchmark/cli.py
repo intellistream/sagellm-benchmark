@@ -456,6 +456,35 @@ def run(
     help="Run e2e benchmark in deterministic simulation mode (default) or live mode.",
 )
 @click.option(
+    "--backend-url",
+    type=str,
+    default="http://localhost:8000/v1",
+    show_default=True,
+    help="API base URL for live e2e benchmark mode (OpenAI-compatible endpoint).",
+)
+@click.option(
+    "--api-key",
+    type=str,
+    default="sagellm-benchmark",
+    show_default=True,
+    help="API key for live e2e benchmark mode.",
+)
+@click.option(
+    "--request-timeout",
+    type=float,
+    default=120.0,
+    show_default=True,
+    help="Per-request timeout in seconds for live e2e mode.",
+)
+@click.option(
+    "--server-wait",
+    "server_wait_s",
+    type=float,
+    default=30.0,
+    show_default=True,
+    help="Max seconds to wait for the API server to become ready in live mode.",
+)
+@click.option(
     "--output-json",
     type=click.Path(),
     default="./benchmark_results/perf_results.json",
@@ -501,6 +530,10 @@ def perf(
     batch_sizes: tuple[int, ...],
     precisions: tuple[str, ...],
     simulate: bool,
+    backend_url: str,
+    api_key: str,
+    request_timeout: float,
+    server_wait_s: float,
     output_json: str,
     output_markdown: str,
     plot: bool,
@@ -532,11 +565,35 @@ def perf(
             summarize_e2e_rows,
         )
 
+        if simulate:
+            console.print("[dim]Mode: simulate (deterministic)[/dim]")
+        else:
+            import logging as _logging
+
+            # Enable INFO logging for live mode so server wait/discovery messages are visible
+            _logging.basicConfig(
+                level=_logging.INFO,
+                format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                datefmt="%H:%M:%S",
+            )
+            console.print(
+                f"[bold yellow]Mode: live — sending real requests to {backend_url}[/bold yellow]"
+            )
+            console.print(
+                f"[dim]Models: {', '.join(models)} | "
+                f"batch sizes: {', '.join(str(b) for b in batch_sizes)} | "
+                f"timeout: {request_timeout:.0f}s/req[/dim]"
+            )
+
         rows = run_e2e_model_benchmarks(
             models=list(models),
             batch_sizes=list(batch_sizes),
             precisions=list(precisions),
             simulate=simulate,
+            backend_url=backend_url,
+            api_key=api_key,
+            request_timeout=request_timeout,
+            server_wait_s=server_wait_s,
         )
         summary = summarize_e2e_rows(rows)
         result_data = {

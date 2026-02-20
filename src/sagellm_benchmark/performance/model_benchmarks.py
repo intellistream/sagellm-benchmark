@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import random
 from dataclasses import dataclass
 from hashlib import sha256
 from statistics import mean
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -23,10 +27,29 @@ def run_e2e_model_benchmarks(
     batch_sizes: list[int],
     precisions: list[str] | None = None,
     simulate: bool = True,
+    backend_url: str = "http://localhost:8000/v1",
+    api_key: str = "sagellm-benchmark",
+    request_timeout: float = 120.0,
+    server_wait_s: float = 30.0,
 ) -> list[dict[str, Any]]:
     """Run E2E model benchmarks.
 
     Uses deterministic simulation mode by default to keep CI stable.
+    In live mode (simulate=False), sends real requests to an OpenAI-compatible
+    API server (e.g., sagellm-gateway or sagellm-core engine_server).
+
+    Args:
+        models: List of model names/paths to benchmark.
+        batch_sizes: List of batch sizes to test.
+        precisions: Precision labels (simulation only; live mode uses server precision).
+        simulate: If True, use deterministic simulation. If False, run live requests.
+        backend_url: API base URL for live mode (default: http://localhost:8000/v1).
+        api_key: API key for live mode (default: sagellm-benchmark).
+        request_timeout: Per-request timeout in seconds for live mode.
+        server_wait_s: Max seconds to wait for server to become ready in live mode.
+
+    Returns:
+        List of result rows with benchmark metrics.
     """
     scenarios: list[Scenario] = []
     for batch_size in batch_sizes:
@@ -37,71 +60,261 @@ def run_e2e_model_benchmarks(
             ]
         )
 
-    precision_values = precisions or ["fp16", "int8"]
-
     rows: list[dict[str, Any]] = []
-    for model in models:
-        for precision in precision_values:
-            for scenario in scenarios:
-                if not simulate:
-                    raise RuntimeError(
-                        "Live E2E benchmark mode is not enabled yet in sagellm-benchmark."
+
+    if simulate:
+        precision_values = precisions or ["fp16", "int8"]
+        for model in models:
+            for precision in precision_values:
+                for scenario in scenarios:
+                    seed = _stable_seed(model, precision, scenario.name)
+                    rng = random.Random(seed)
+
+                    model_factor = 1.2 if "Llama" in model else (0.9 if "Phi" in model else 1.0)
+                    context_factor = 1.8 if scenario.prompt_tokens > 1000 else 1.0
+                    precision_factor = (
+                        0.85 if precision == "int8" else (1.15 if precision == "fp32" else 1.0)
                     )
 
-                seed = _stable_seed(model, precision, scenario.name)
-                rng = random.Random(seed)
-
-                model_factor = 1.2 if "Llama" in model else (0.9 if "Phi" in model else 1.0)
-                context_factor = 1.8 if scenario.prompt_tokens > 1000 else 1.0
-                precision_factor = (
-                    0.85 if precision == "int8" else (1.15 if precision == "fp32" else 1.0)
-                )
-
-                ttft = (
-                    45.0
-                    * model_factor
-                    * context_factor
-                    * precision_factor
-                    * (1 + rng.uniform(-0.08, 0.08))
-                )
-                tbt = (
-                    9.0
-                    * model_factor
-                    * context_factor
-                    * precision_factor
-                    * (1 + rng.uniform(-0.08, 0.08))
-                )
-
-                throughput = 100.0 / model_factor / context_factor / precision_factor
-                throughput *= scenario.batch_size**0.4
-                throughput *= 1 + rng.uniform(-0.08, 0.08)
-
-                latencies: list[float] = []
-                for _ in range(max(3, scenario.batch_size)):
-                    latencies.append(
-                        ttft
-                        + tbt
-                        * max(1, scenario.output_tokens - 1)
-                        / max(1.0, scenario.batch_size * 0.7)
+                    ttft = (
+                        45.0
+                        * model_factor
+                        * context_factor
+                        * precision_factor
+                        * (1 + rng.uniform(-0.08, 0.08))
+                    )
+                    tbt = (
+                        9.0
+                        * model_factor
+                        * context_factor
+                        * precision_factor
+                        * (1 + rng.uniform(-0.08, 0.08))
                     )
 
-                rows.append(
-                    {
-                        "model": model,
-                        "precision": precision,
-                        "scenario": scenario.name,
-                        "batch_size": scenario.batch_size,
-                        "ttft_ms": ttft,
-                        "tbt_ms": tbt,
-                        "throughput_tps": throughput,
-                        "latency_p50_ms": _percentile(latencies, 50),
-                        "latency_p95_ms": _percentile(latencies, 95),
-                        "latency_p99_ms": _percentile(latencies, 99),
-                        "memory_mb": 5000.0 * model_factor + scenario.prompt_tokens * 0.2,
-                    }
-                )
+                    throughput = 100.0 / model_factor / context_factor / precision_factor
+                    throughput *= scenario.batch_size**0.4
+                    throughput *= 1 + rng.uniform(-0.08, 0.08)
+
+                    latencies: list[float] = []
+                    for _ in range(max(3, scenario.batch_size)):
+                        latencies.append(
+                            ttft
+                            + tbt
+                            * max(1, scenario.output_tokens - 1)
+                            / max(1.0, scenario.batch_size * 0.7)
+                        )
+
+                    rows.append(
+                        {
+                            "model": model,
+                            "precision": precision,
+                            "scenario": scenario.name,
+                            "batch_size": scenario.batch_size,
+                            "ttft_ms": ttft,
+                            "tbt_ms": tbt,
+                            "throughput_tps": throughput,
+                            "latency_p50_ms": _percentile(latencies, 50),
+                            "latency_p95_ms": _percentile(latencies, 95),
+                            "latency_p99_ms": _percentile(latencies, 99),
+                            "memory_mb": 5000.0 * model_factor + scenario.prompt_tokens * 0.2,
+                            "mode": "simulate",
+                        }
+                    )
+    else:
+        # Live mode: send real requests to an OpenAI-compatible API server
+        rows = asyncio.run(
+            _run_live_benchmarks(
+                models=models,
+                scenarios=scenarios,
+                backend_url=backend_url,
+                api_key=api_key,
+                request_timeout=request_timeout,
+                server_wait_s=server_wait_s,
+            )
+        )
 
     return rows
+
+
+async def _run_live_benchmarks(
+    *,
+    models: list[str],
+    scenarios: list[Scenario],
+    backend_url: str,
+    api_key: str,
+    request_timeout: float,
+    server_wait_s: float = 30.0,
+) -> list[dict[str, Any]]:
+    """Run live E2E benchmarks against a real API server.
+
+    Args:
+        models: Model names/paths to benchmark.
+        scenarios: Benchmark scenarios.
+        backend_url: API base URL.
+        api_key: API key.
+        request_timeout: Per-request timeout (seconds).
+        server_wait_s: Max seconds to wait for server to become ready.
+
+    Returns:
+        List of result rows.
+    """
+    import time
+
+    from sagellm_benchmark.clients.openai_client import GatewayClient
+
+    rows: list[dict[str, Any]] = []
+
+    # Single shared client for all models (server serves one model at a time)
+    client = GatewayClient(
+        base_url=backend_url,
+        api_key=api_key,
+        timeout=request_timeout,
+    )
+
+    # --- Pre-flight: wait for server to become ready ---
+    logger.info(f"Waiting for server at {backend_url} (up to {server_wait_s:.0f}s)...")
+    deadline = time.monotonic() + server_wait_s
+    ready = False
+    attempt = 0
+    while time.monotonic() < deadline:
+        attempt += 1
+        healthy = await client.health_check(timeout=5.0)
+        if healthy:
+            ready = True
+            logger.info(f"Server ready after {attempt} probe(s)")
+            break
+        wait = min(3.0, deadline - time.monotonic())
+        if wait > 0:
+            logger.info(f"Server not ready yet (attempt {attempt}); retrying in {wait:.1f}s...")
+            await asyncio.sleep(wait)
+
+    if not ready:
+        logger.error(
+            f"Server at {backend_url} did not become ready within {server_wait_s:.0f}s. "
+            "Proceeding anyway — requests may fail."
+        )
+
+    # --- Model auto-detection ---
+    discovered_model = await client.discover_model(timeout=5.0)
+    if discovered_model:
+        logger.info(f"Server is serving model: {discovered_model}")
+
+    for model in models:
+        # Warn and override if the requested model name doesn't match the server's model
+        effective_model = model
+        if discovered_model and discovered_model != model:
+            logger.warning(
+                f"Requested model '{model}' does not match server model '{discovered_model}'. "
+                f"Using server model '{discovered_model}' for API requests."
+            )
+            effective_model = discovered_model
+
+        for scenario in scenarios:
+            logger.info(
+                f"Live benchmark: model={effective_model} scenario={scenario.name} "
+                f"batch_size={scenario.batch_size} prompt_tokens≈{scenario.prompt_tokens} "
+                f"output_tokens={scenario.output_tokens}"
+            )
+            row = await _run_live_scenario(
+                client=client,
+                model=effective_model,
+                requested_model=model,
+                scenario=scenario,
+            )
+            rows.append(row)
+
+    await client.close()
+    return rows
+
+
+async def _run_live_scenario(
+    *,
+    client: Any,
+    model: str,
+    requested_model: str,
+    scenario: Scenario,
+) -> dict[str, Any]:
+    """Run a single scenario against a live API server.
+
+    Sends `batch_size` concurrent requests and aggregates the real metrics.
+
+    Args:
+        client: GatewayClient instance.
+        model: Effective model name used in API requests (may differ from requested_model).
+        requested_model: Original model name the user requested (used in result row labeling).
+        scenario: Benchmark scenario definition.
+
+    Returns:
+        Result row dict compatible with simulate-mode output.
+    """
+    from sagellm_benchmark.types import BenchmarkRequest
+
+    # Build a synthetic prompt of approximately the right token length.
+    # English text averages ~1.3 tokens/word; we use a safe conservative ratio.
+    words_needed = max(10, int(scenario.prompt_tokens / 1.3))
+    filler_word = "benchmark"
+    prompt = " ".join([filler_word] * words_needed)
+
+    requests = [
+        BenchmarkRequest(
+            prompt=prompt,
+            max_tokens=scenario.output_tokens,
+            request_id=f"live-{scenario.name}-{i}",
+            model=model,
+            stream=True,
+        )
+        for i in range(scenario.batch_size)
+    ]
+
+    results = await client.generate_batch(requests, concurrent=True)
+
+    # Aggregate per-request metrics
+    ttft_values: list[float] = []
+    tbt_values: list[float] = []
+    throughput_values: list[float] = []
+    e2e_latencies: list[float] = []
+    successful = 0
+
+    for result in results:
+        if result.success and result.metrics:
+            successful += 1
+            m = result.metrics
+            ttft_values.append(m.ttft_ms)
+            tbt_values.append(m.tbt_ms)
+            throughput_values.append(m.throughput_tps)
+            # Approximate E2E latency: TTFT + TBT * (output_tokens - 1)
+            e2e = m.ttft_ms + m.tbt_ms * max(0, result.output_tokens - 1)
+            e2e_latencies.append(e2e)
+        else:
+            logger.warning(f"Request {result.request_id} failed: {result.error}")
+
+    failed = len(results) - successful
+    avg_ttft = mean(ttft_values) if ttft_values else 0.0
+    avg_tbt = mean(tbt_values) if tbt_values else 0.0
+    avg_throughput = mean(throughput_values) if throughput_values else 0.0
+
+    logger.info(
+        f"Scenario {scenario.name}: {successful}/{len(results)} ok, "
+        f"ttft={avg_ttft:.1f}ms tbt={avg_tbt:.1f}ms throughput={avg_throughput:.1f}tps"
+    )
+
+    return {
+        "model": requested_model,
+        "effective_model": model,
+        "precision": "live",
+        "scenario": scenario.name,
+        "batch_size": scenario.batch_size,
+        "ttft_ms": avg_ttft,
+        "tbt_ms": avg_tbt,
+        "throughput_tps": avg_throughput,
+        "latency_p50_ms": _percentile(e2e_latencies, 50),
+        "latency_p95_ms": _percentile(e2e_latencies, 95),
+        "latency_p99_ms": _percentile(e2e_latencies, 99),
+        "memory_mb": 0.0,  # Not available via OpenAI-compatible API
+        "mode": "live",
+        "successful_requests": successful,
+        "failed_requests": failed,
+    }
 
 
 def _stable_seed(*parts: str) -> int:
