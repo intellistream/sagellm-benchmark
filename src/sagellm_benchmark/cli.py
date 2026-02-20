@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 console = Console()
@@ -170,8 +172,27 @@ def main() -> None:
 @main.command()
 @click.option(
     "--workload",
-    type=click.Choice(["m1", "short", "long", "stress"]),
-    default="m1",
+    type=click.Choice(
+        [
+            "all",
+            "query",
+            "Q1",
+            "Q2",
+            "Q3",
+            "Q4",
+            "Q5",
+            "Q6",
+            "Q7",
+            "Q8",
+            "m1",
+            "year1",
+            "short",
+            "long",
+            "stress",
+        ],
+        case_sensitive=False,
+    ),
+    default="all",
     help="Workload type to run.",
 )
 @click.option(
@@ -255,7 +276,7 @@ def run(
         sys.exit(1)
 
     # Determine workloads to run
-    from sagellm_benchmark.workloads import M1_WORKLOADS, WorkloadType
+    from sagellm_benchmark.workloads import get_workloads_by_selector
 
     # Load dataset if needed
     dataset_instance = None
@@ -283,15 +304,9 @@ def run(
         dataset_instance = SyntheticShareGPTDataset(seed=42)
         console.print("✓ Synthetic dataset ready")
 
-    if workload == "m1":
-        workloads = M1_WORKLOADS
-    elif workload == "short":
-        workloads = [w for w in M1_WORKLOADS if w.workload_type == WorkloadType.SHORT]
-    elif workload == "long":
-        workloads = [w for w in M1_WORKLOADS if w.workload_type == WorkloadType.LONG]
-    elif workload == "stress":
-        workloads = [w for w in M1_WORKLOADS if w.workload_type == WorkloadType.STRESS]
-    else:
+    try:
+        workloads = get_workloads_by_selector(workload)
+    except ValueError:
         console.print(f"[bold red]Unknown workload:[/bold red] {workload}")
         sys.exit(1)
 
@@ -940,6 +955,107 @@ def _display_markdown(data: dict) -> None:
             f"| {name} | {metrics['total_requests']} | {metrics['failed_requests']} | "
             f"{metrics['avg_ttft_ms']:.2f} | {metrics['avg_throughput_tps']:.2f} |"
         )
+
+
+@main.command()
+@click.option(
+    "--dataset",
+    type=str,
+    default="intellistream/sagellm-benchmark-results",
+    help="Hugging Face dataset repo ID (e.g., intellistream/sagellm-benchmark-results).",
+)
+@click.option(
+    "--input",
+    "input_dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    default="outputs",
+    show_default=True,
+    help="Input directory to scan recursively for *_leaderboard.json files.",
+)
+@click.option(
+    "--token",
+    type=str,
+    default=None,
+    help="Hugging Face token (fallback to HF_TOKEN env var).",
+)
+@click.option(
+    "--private/--public",
+    default=False,
+    help="Create dataset repo as private/public if it does not exist.",
+)
+def upload_hf(dataset: str, input_dir: str, token: str | None, private: bool) -> None:
+    """Upload benchmark leaderboard files to Hugging Face dataset."""
+    try:
+        from huggingface_hub import HfApi
+    except ImportError:
+        console.print("[red]❌ missing dependency: huggingface_hub[/red]")
+        console.print("Install with: [cyan]pip install huggingface_hub[/cyan]")
+        sys.exit(1)
+
+    resolved_token = token or os.getenv("HF_TOKEN")
+    if not resolved_token:
+        console.print("[red]❌ HF token not provided[/red]")
+        console.print("Use --token or set HF_TOKEN environment variable")
+        sys.exit(1)
+
+    hf_endpoint = os.getenv("HF_ENDPOINT", "https://huggingface.co")
+    os.environ["HF_ENDPOINT"] = hf_endpoint
+
+    input_path = Path(input_dir)
+    leaderboard_files = sorted(input_path.rglob("*_leaderboard.json"))
+
+    if not leaderboard_files:
+        console.print(f"[red]❌ No leaderboard files found under: {input_path}[/red]")
+        sys.exit(1)
+
+    api = HfApi(endpoint=hf_endpoint, token=resolved_token)
+
+    try:
+        api.repo_info(repo_id=dataset, repo_type="dataset")
+        console.print(f"[green]✓ Dataset exists:[/green] {dataset}")
+    except Exception:
+        console.print(f"[yellow]⚠ Dataset not found, creating:[/yellow] {dataset}")
+        api.create_repo(repo_id=dataset, repo_type="dataset", private=private)
+        console.print(f"[green]✓ Created dataset:[/green] {dataset}")
+
+    console.print(f"[cyan]Endpoint:[/cyan] {hf_endpoint}")
+    console.print(
+        f"[cyan]Uploading[/cyan] {len(leaderboard_files)} leaderboard files from {input_path}"
+    )
+
+    upload_errors: list[str] = []
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Uploading files", total=len(leaderboard_files))
+
+        for file_path in leaderboard_files:
+            path_in_repo = str(file_path.relative_to(input_path)).replace("\\", "/")
+            try:
+                api.upload_file(
+                    path_or_fileobj=str(file_path),
+                    path_in_repo=path_in_repo,
+                    repo_id=dataset,
+                    repo_type="dataset",
+                    commit_message=f"Update {path_in_repo} - {datetime.now().isoformat()}",
+                )
+            except Exception as exc:  # pragma: no cover - network/runtime dependent
+                upload_errors.append(f"{path_in_repo}: {exc}")
+            finally:
+                progress.advance(task)
+
+    if upload_errors:
+        console.print("[red]❌ Upload completed with errors:[/red]")
+        for error in upload_errors:
+            console.print(f"  - {error}")
+        sys.exit(1)
+
+    console.print("[bold green]✅ Upload complete![/bold green]")
+    console.print(f"🔗 https://huggingface.co/datasets/{dataset}")
 
 
 @main.command()

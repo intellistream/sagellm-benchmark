@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `workloads.py`: 新增 TPCH/TPCC 风格 query workloads（`Q1`~`Q8`）
+  - 新增 `WorkloadType.QUERY`
+  - 新增 `WorkloadQuery` 枚举与 `TPCH_WORKLOADS`
+  - 新增 `get_workloads_by_selector()`，支持 `all/query/Q1...Q8/m1/year1/short/long/stress`
+- CLI `run --workload` 支持 `Q1~Q8` 与 `all/query` 选择
+- CLI 新增 `upload-hf` 命令：
+  - 参数：`--dataset`, `--input`, `--token`, `--private/--public`
+  - 递归上传 `*_leaderboard.json` 文件到 HuggingFace Dataset
+  - 支持 `HF_TOKEN` 环境变量回退与 rich 上传进度条
+- 新增测试：`tests/test_workloads.py`（Q workload 选择器与兼容性）
+
 - `scripts/publish_pipeline.sh`: 一键发布流水线脚本，自动完成「运行基准测试 → 聚合结果 → 上传 HuggingFace → 触发 website 刷新」全流程
   - 支持 `--model`, `--workload`, `--backend`, `--backend-url` 参数
   - 支持 `--skip-run`（仅聚合+上传）、`--skip-upload`（本地调试）、`--local-only`、`--dry-run` 等模式

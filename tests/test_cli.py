@@ -44,6 +44,17 @@ def test_report_help():
     assert "--input" in result.output
     assert "--format" in result.output
 
+
+def test_upload_hf_help():
+    """Test upload-hf subcommand help."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["upload-hf", "--help"])
+    assert result.exit_code == 0
+    assert "--dataset" in result.output
+    assert "--input" in result.output
+    assert "--token" in result.output
+
+
 def test_run_mode_parameter():
     """Test that --mode parameter is available in run command."""
     runner = CliRunner()

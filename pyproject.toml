@@ -32,6 +32,8 @@ dependencies = [
     "jsonschema>=4.0.0",
     # Standard API client for OpenAI-compatible benchmarking
     "openai>=1.0.0",
+    # Hugging Face dataset upload
+    "huggingface_hub>=0.24.0",
 ]
 
 [project.optional-dependencies]
