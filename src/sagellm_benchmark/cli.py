@@ -485,6 +485,17 @@ def run(
     help="Max seconds to wait for the API server to become ready in live mode.",
 )
 @click.option(
+    "--max-seq-len",
+    "max_seq_len",
+    type=int,
+    default=None,
+    help=(
+        "Maximum sequence length (prompt + output tokens) the model supports. "
+        "Auto-detected if not set. Used in live mode to clamp prompts so they "
+        "never exceed the model's context window."
+    ),
+)
+@click.option(
     "--output-json",
     type=click.Path(),
     default="./benchmark_results/perf_results.json",
@@ -534,6 +545,7 @@ def perf(
     api_key: str,
     request_timeout: float,
     server_wait_s: float,
+    max_seq_len: int | None,
     output_json: str,
     output_markdown: str,
     plot: bool,
@@ -594,6 +606,7 @@ def perf(
             api_key=api_key,
             request_timeout=request_timeout,
             server_wait_s=server_wait_s,
+            max_seq_len=max_seq_len,
         )
         summary = summarize_e2e_rows(rows)
         result_data = {

@@ -31,6 +31,7 @@ def run_e2e_model_benchmarks(
     api_key: str = "sagellm-benchmark",
     request_timeout: float = 120.0,
     server_wait_s: float = 30.0,
+    max_seq_len: int | None = None,
 ) -> list[dict[str, Any]]:
     """Run E2E model benchmarks.
 
@@ -47,6 +48,9 @@ def run_e2e_model_benchmarks(
         api_key: API key for live mode (default: sagellm-benchmark).
         request_timeout: Per-request timeout in seconds for live mode.
         server_wait_s: Max seconds to wait for server to become ready in live mode.
+        max_seq_len: Maximum sequence length (prompt + output) the model supports.
+            If None, auto-detected from the server; falls back to 1024. Used in
+            live mode to clamp prompts so they never exceed the model's context window.
 
     Returns:
         List of result rows with benchmark metrics.
@@ -130,10 +134,71 @@ def run_e2e_model_benchmarks(
                 api_key=api_key,
                 request_timeout=request_timeout,
                 server_wait_s=server_wait_s,
+                max_seq_len_override=max_seq_len,
             )
         )
 
     return rows
+
+
+async def _discover_max_seq_len(
+    client: Any,
+    model_path: str,
+    backend_url: str,
+) -> int:
+    """Discover the maximum sequence length for a model.
+
+    Tries in order:
+    1. GET /info from the engine server (checks 'max_model_len' / 'max_position_embeddings')
+    2. transformers AutoConfig.from_pretrained(model_path) → max_position_embeddings
+    3. Hard fallback: 1024
+
+    Args:
+        client: GatewayClient (used only for the /info probe).
+        model_path: Model path or HuggingFace repo ID.
+        backend_url: API base URL (used to derive server root for /info).
+
+    Returns:
+        Maximum sequence length as int.
+    """
+    _fallback_seq_len = 1024
+
+    # 1. Query /info (sagellm engine_server)
+    base = backend_url.rstrip("/")
+    root = base[:-3] if base.endswith("/v1") else base
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=5.0) as http:
+            r = await http.get(f"{root}/info")
+        if r.status_code == 200:
+            data = r.json()
+            for key in ("max_model_len", "max_position_embeddings", "max_seq_len", "n_positions"):
+                val = data.get(key)
+                if isinstance(val, int) and val > 0:
+                    logger.info(f"Discovered max_seq_len={val} from /info ({key})")
+                    return val
+    except Exception as e:
+        logger.debug(f"/info max_seq_len probe failed: {e}")
+
+    # 2. transformers AutoConfig (works for local paths and cached HF models)
+    try:
+        from transformers import AutoConfig  # type: ignore[import-untyped]
+
+        cfg = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+        for attr in ("max_position_embeddings", "n_positions", "max_sequence_length"):
+            val = getattr(cfg, attr, None)
+            if isinstance(val, int) and val > 0:
+                logger.info(f"Discovered max_seq_len={val} from AutoConfig.{attr}")
+                return val
+    except Exception as e:
+        logger.debug(f"AutoConfig max_seq_len probe failed: {e}")
+
+    logger.warning(
+        f"Could not determine max_seq_len for '{model_path}'; defaulting to {_fallback_seq_len}. "
+        "Override with --max-seq-len if your model supports a longer context."
+    )
+    return _fallback_seq_len
 
 
 async def _run_live_benchmarks(
@@ -144,6 +209,7 @@ async def _run_live_benchmarks(
     api_key: str,
     request_timeout: float,
     server_wait_s: float = 30.0,
+    max_seq_len_override: int | None = None,
 ) -> list[dict[str, Any]]:
     """Run live E2E benchmarks against a real API server.
 
@@ -154,6 +220,7 @@ async def _run_live_benchmarks(
         api_key: API key.
         request_timeout: Per-request timeout (seconds).
         server_wait_s: Max seconds to wait for server to become ready.
+        max_seq_len_override: If set, skip auto-detection and use this value.
 
     Returns:
         List of result rows.
@@ -209,10 +276,34 @@ async def _run_live_benchmarks(
             )
             effective_model = discovered_model
 
+        # --- Discover max sequence length for this model ---
+        if max_seq_len_override is not None:
+            max_seq_len = max_seq_len_override
+            logger.info(f"Using user-provided max_seq_len={max_seq_len}")
+        else:
+            max_seq_len = await _discover_max_seq_len(
+                client=client,
+                model_path=effective_model,
+                backend_url=backend_url,
+            )
+        logger.info(f"Effective max_seq_len={max_seq_len} for model '{effective_model}'")
+
         for scenario in scenarios:
+            effective_prompt_tokens = min(
+                scenario.prompt_tokens,
+                max(10, max_seq_len - scenario.output_tokens - 10),
+            )
+            if effective_prompt_tokens < scenario.prompt_tokens:
+                logger.warning(
+                    f"Scenario '{scenario.name}': prompt_tokens clamped "
+                    f"{scenario.prompt_tokens} → {effective_prompt_tokens} "
+                    f"to fit model context window ({max_seq_len} tokens). "
+                    "Use --max-seq-len to override."
+                )
             logger.info(
                 f"Live benchmark: model={effective_model} scenario={scenario.name} "
-                f"batch_size={scenario.batch_size} prompt_tokens≈{scenario.prompt_tokens} "
+                f"batch_size={scenario.batch_size} "
+                f"prompt_tokens≈{effective_prompt_tokens} "
                 f"output_tokens={scenario.output_tokens}"
             )
             row = await _run_live_scenario(
@@ -220,6 +311,7 @@ async def _run_live_benchmarks(
                 model=effective_model,
                 requested_model=model,
                 scenario=scenario,
+                effective_prompt_tokens=effective_prompt_tokens,
             )
             rows.append(row)
 
@@ -233,6 +325,7 @@ async def _run_live_scenario(
     model: str,
     requested_model: str,
     scenario: Scenario,
+    effective_prompt_tokens: int | None = None,
 ) -> dict[str, Any]:
     """Run a single scenario against a live API server.
 
@@ -243,6 +336,8 @@ async def _run_live_scenario(
         model: Effective model name used in API requests (may differ from requested_model).
         requested_model: Original model name the user requested (used in result row labeling).
         scenario: Benchmark scenario definition.
+        effective_prompt_tokens: Clamped prompt token count (≤ model context window).
+            Defaults to scenario.prompt_tokens if not provided.
 
     Returns:
         Result row dict compatible with simulate-mode output.
@@ -251,7 +346,10 @@ async def _run_live_scenario(
 
     # Build a synthetic prompt of approximately the right token length.
     # English text averages ~1.3 tokens/word; we use a safe conservative ratio.
-    words_needed = max(10, int(scenario.prompt_tokens / 1.3))
+    prompt_tokens = (
+        effective_prompt_tokens if effective_prompt_tokens is not None else scenario.prompt_tokens
+    )
+    words_needed = max(10, int(prompt_tokens / 1.3))
     filler_word = "benchmark"
     prompt = " ".join([filler_word] * words_needed)
 
