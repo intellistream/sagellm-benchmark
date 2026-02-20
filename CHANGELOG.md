@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `scripts/publish_pipeline.sh`: 一键发布流水线脚本，自动完成「运行基准测试 → 聚合结果 → 上传 HuggingFace → 触发 website 刷新」全流程
+  - 支持 `--model`, `--workload`, `--backend`, `--backend-url` 参数
+  - 支持 `--skip-run`（仅聚合+上传）、`--skip-upload`（本地调试）、`--local-only`、`--dry-run` 等模式
+  - 自动读取 `~/sagellm/.env` 中的 `HF_TOKEN`
+- `.github/workflows/benchmark-publish.yml`: 自动化发布 GitHub Actions Workflow
+  - 触发方式：手动（workflow_dispatch，支持参数）、定时（每周一 UTC 02:00）、push 到 `outputs/`
+  - 4 个 Jobs：Run & Aggregate → Upload to HF → Notify Website → Summary
+  - 支持 `dry_run` 参数，不实际上传用于测试流程
+  - 自动启动 sagellm 服务（如果 self-hosted 上未运行）
+  - Job Summary 输出美观的发布摘要表格
+
+
 - `model_benchmarks.py`：实现 live E2E benchmark 模式（`--live` flag）
   - `run_e2e_model_benchmarks` 新增 `backend_url`、`api_key`、`request_timeout`、`server_wait_s` 参数
   - `simulate=False` 时通过 `GatewayClient`（OpenAI 兼容协议）向真实 API 服务器发送并发请求
