@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - live 模式按 scenario 自动 clamp prompt_tokens / output_tokens 防止超出上下文窗口
 
 ### Fixed
+- CI 安装失败修复：`.github/workflows/benchmark-publish.yml` 改为 `pip install -e . huggingface_hub`，避免清华镜像未同步 `isagellm-benchmark` 时触发 `No matching distribution found`
 - Leaderboard 导出版本元数据修复：移除 `protocol/control-plane/gateway/kv-cache/comm/compression` 等组件的硬编码旧版本回退，改为从运行环境动态采集并写入；未安装组件显示 `N/A`，避免写入陈旧版本号
 - `save_run_config()` 版本采集扩展为全组件（`isagellm`、`isagellm-benchmark`、`isagellm-protocol`、`isagellm-backend`、`isagellm-core`、`isagellm-kv-cache`、`isagellm-control-plane`、`isagellm-gateway`、`isagellm-comm`、`isagellm-compression`），且按包独立容错，避免单包失败导致全部版本丢失
 - 聚合与上传去重 key 增加版本维度（`sagellm_version/benchmark version`），避免新版本结果因同配置下“性能不占优”被旧版本记录覆盖

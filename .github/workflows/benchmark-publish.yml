@@ -114,6 +114,7 @@ jobs:
           cache: 'pip'
 
       - name: Configure mirrors (China network)
+        if: contains(toJson(runner.labels), 'self-hosted')
         run: |
           mkdir -p ~/.pip
           cat > ~/.pip/pip.conf << 'EOF'
@@ -123,9 +124,9 @@ jobs:
           EOF
           echo "HF_ENDPOINT=https://hf-mirror.com" >> $GITHUB_ENV
 
-      - name: Install sagellm-benchmark
+      - name: Install benchmark package (local source)
         run: |
-          pip install isagellm-benchmark huggingface_hub
+          pip install -e . huggingface_hub
 
       - name: Run benchmark
         if: steps.params.outputs.skip_run != 'true'
