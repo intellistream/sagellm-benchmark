@@ -78,4 +78,4 @@ benchmark_results/*
 .github/rfc*
 
 # mypy cache
-.sage/
+.sage/*
