@@ -38,11 +38,6 @@ on:
         default: 'cpu'
         type: choice
         options: [cpu, cuda, vllm]
-      backend_url:
-        description: 'Backend URL (OpenAI-compatible endpoint)'
-        required: false
-        default: 'http://localhost:8000/v1'
-        type: string
       skip_run:
         description: 'Skip benchmark run (only aggregate+upload existing outputs)'
         required: false
@@ -73,7 +68,6 @@ env:
   DEFAULT_MODEL: 'sshleifer/tiny-gpt2'
   DEFAULT_WORKLOAD: 'all'
   DEFAULT_BACKEND: 'cpu'
-  DEFAULT_BACKEND_URL: 'http://localhost:8000/v1'
 
 jobs:
   # -------------------------------------------------------------------------
@@ -101,14 +95,12 @@ jobs:
           MODEL="${{ github.event.inputs.model || env.DEFAULT_MODEL }}"
           WORKLOAD="${{ github.event.inputs.workload || env.DEFAULT_WORKLOAD }}"
           BACKEND="${{ github.event.inputs.backend || env.DEFAULT_BACKEND }}"
-          BACKEND_URL="${{ github.event.inputs.backend_url || env.DEFAULT_BACKEND_URL }}"
           SKIP_RUN="${{ github.event.inputs.skip_run || 'false' }}"
           DRY_RUN="${{ github.event.inputs.dry_run || 'false' }}"
 
           echo "model=${MODEL}"         >> "$GITHUB_OUTPUT"
           echo "workload=${WORKLOAD}"   >> "$GITHUB_OUTPUT"
           echo "backend=${BACKEND}"     >> "$GITHUB_OUTPUT"
-          echo "backend_url=${BACKEND_URL}" >> "$GITHUB_OUTPUT"
           echo "skip_run=${SKIP_RUN}"   >> "$GITHUB_OUTPUT"
           echo "dry_run=${DRY_RUN}"     >> "$GITHUB_OUTPUT"
 
@@ -181,7 +173,6 @@ jobs:
           sagellm-benchmark run \
             --workload "${{ steps.params.outputs.workload }}" \
             --backend "${{ steps.params.outputs.backend }}" \
-            --backend-url "${{ steps.params.outputs.backend_url }}" \
             --model "${{ steps.params.outputs.model }}" \
             --verbose
 
