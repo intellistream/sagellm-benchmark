@@ -20,7 +20,7 @@ env:
 
 jobs:
   upload-to-hf:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     
     steps:
       - name: Checkout benchmark repo

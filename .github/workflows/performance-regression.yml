@@ -26,7 +26,7 @@ permissions:
 jobs:
   performance-regression:
     name: Perf Regression
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:

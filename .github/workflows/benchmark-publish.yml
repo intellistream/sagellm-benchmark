@@ -81,7 +81,7 @@ jobs:
   # -------------------------------------------------------------------------
   run-and-aggregate:
     name: Run Benchmark & Aggregate
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 60
 
     outputs:
@@ -247,7 +247,7 @@ jobs:
   # -------------------------------------------------------------------------
   upload-to-hf:
     name: Upload to HuggingFace
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: run-and-aggregate
     if: |
       needs.run-and-aggregate.outputs.has_results == 'true' &&
@@ -295,7 +295,7 @@ jobs:
   # -------------------------------------------------------------------------
   notify-website:
     name: Notify Website
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: upload-to-hf
     if: success()
     timeout-minutes: 5
