@@ -1,141 +1,18 @@
 #!/usr/bin/env bash
-# Pre-commit hook for sageLLM
-# Runs lightweight checks before allowing commits
+# Pre-commit hook stub for sagellm-benchmark.
+#
+# All checks are defined in .pre-commit-config.yaml.
+# This file is installed by:
+#
+#   pre-commit install          ← canonical setup command
+#   ./quickstart.sh             ← also calls pre-commit install internally
+#
+# ⚠️  Do NOT manually cp this file to .git/hooks/pre-commit.
+#     Always use `pre-commit install` or `./quickstart.sh`.
 
-set -euo pipefail
-
-# Colors
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-if [ "$current_branch" = "main" ]; then
-    echo -e "${RED}✗ Direct commits to main are forbidden${NC}"
-    echo -e "${YELLOW}  Please create/use a feature branch and open PR to main-dev/main.${NC}"
-    exit 1
-fi
-
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${CYAN}🔍 Running pre-commit checks...${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-staged_files=$(git diff --cached --name-only --diff-filter=ACM || true)
-if [ -z "$staged_files" ]; then
-    echo -e "${GREEN}✓ No staged changes to check${NC}"
-    exit 0
-fi
-
-# Run .pre-commit-config.yaml checks (trailing whitespace, ruff, etc.)
 if command -v pre-commit >/dev/null 2>&1; then
-    echo -e "${YELLOW}Running pre-commit config checks (ruff, whitespace, etc.)...${NC}"
-    if ! SKIP="" pre-commit run --hook-stage commit; then
-        echo -e "${RED}✗ pre-commit config checks failed. Fix issues and re-stage.${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}✓ pre-commit config checks passed${NC}"
-fi
-
-get_file_size() {
-    local file="$1"
-    if stat -c%s "$file" >/dev/null 2>&1; then
-        stat -c%s "$file"
-    elif stat -f%z "$file" >/dev/null 2>&1; then
-        stat -f%z "$file"
-    else
-        echo 0
-    fi
-}
-
-# Check for trailing whitespace
-echo -e "${YELLOW}Checking for trailing whitespace...${NC}"
-if git diff --cached --check --diff-filter=ACM; then
-    echo -e "${GREEN}✓ No trailing whitespace${NC}"
+    exec pre-commit hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit -- "$@"
 else
-    echo -e "${RED}✗ Found trailing whitespace. Please fix before committing.${NC}"
+    echo "pre-commit not found. Run: pip install pre-commit && pre-commit install" >&2
     exit 1
 fi
-
-# Check for merge conflict markers
-echo -e "${YELLOW}Checking for merge conflict markers...${NC}"
-if git diff --cached | grep -nE '^\+<<<<<<<|^\+======|^\+>>>>>>>' >/dev/null; then
-    echo -e "${RED}✗ Merge conflict markers found in staged changes${NC}"
-    exit 1
-else
-    echo -e "${GREEN}✓ No conflict markers${NC}"
-fi
-
-# Check for mock usage in Python files (CPU-first policy)
-echo -e "${YELLOW}Checking for mock usage...${NC}"
-if git diff --cached -- '*.py' | grep -nE '^\+.*\bmock\b|^\+.*mock_|^\+.*_mock|^\+.*--mock' >/dev/null; then
-    echo -e "${RED}✗ Mock usage is forbidden. Use CPU backend for validation.${NC}"
-    exit 1
-else
-    echo -e "${GREEN}✓ No mock usage${NC}"
-fi
-
-# Check for forbidden requirements.txt files
-echo -e "${YELLOW}Checking for requirements.txt files...${NC}"
-requirements_files=()
-while read -r file; do
-    if [[ "$file" == *requirements*.txt ]]; then
-        requirements_files+=("$file")
-    fi
-done <<< "$staged_files"
-
-if [ ${#requirements_files[@]} -gt 0 ]; then
-    echo -e "${RED}✗ requirements.txt files are forbidden in sageLLM projects!${NC}"
-    echo -e "${RED}  All dependencies must be declared in pyproject.toml${NC}"
-    echo -e "${YELLOW}  Found:${NC}"
-    printf '  - %s\n' "${requirements_files[@]}"
-    echo -e "${YELLOW}  Please use pyproject.toml [project.dependencies] instead.${NC}"
-    exit 1
-else
-    echo -e "${GREEN}✓ No requirements.txt files${NC}"
-fi
-
-# Check for large files (>5MB)
-echo -e "${YELLOW}Checking for large files...${NC}"
-max_size=5242880
-large_files=()
-while read -r file; do
-    if [ -f "$file" ]; then
-        size=$(get_file_size "$file")
-        if [ "$size" -gt "$max_size" ]; then
-            large_files+=("$file ($((size / 1024 / 1024))MB)")
-        fi
-    fi
-done <<< "$staged_files"
-
-if [ ${#large_files[@]} -gt 0 ]; then
-    echo -e "${RED}✗ Large files detected (>5MB):${NC}"
-    printf '%s\n' "${large_files[@]}"
-    echo -e "${YELLOW}Consider using Git LFS or excluding these files.${NC}"
-    exit 1
-else
-    echo -e "${GREEN}✓ No large files${NC}"
-fi
-
-# Check for common debug statements in Python files
-echo -e "${YELLOW}Checking for debug statements...${NC}"
-debug_files=()
-while read -r file; do
-    if [[ "$file" == *.py ]]; then
-        if git diff --cached "$file" | grep -E '^\+.*\b(print|pdb\.set_trace|breakpoint)\(' >/dev/null; then
-            debug_files+=("$file")
-        fi
-    fi
-done <<< "$staged_files"
-
-if [ ${#debug_files[@]} -gt 0 ]; then
-    echo -e "${YELLOW}⚠  Warning: Debug statements found in:${NC}"
-    printf '  - %s\n' "${debug_files[@]}"
-else
-    echo -e "${GREEN}✓ No debug statements${NC}"
-fi
-
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}✓ Pre-commit checks passed!${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

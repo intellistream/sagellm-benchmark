@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **chore: standardize pre-commit hooks** — migrate all checks to `.pre-commit-config.yaml`; replace `hooks/pre-commit` with delegation stub; `./quickstart.sh` and `pre-commit install` are now equivalent
+
 ### Fixed
 - **Pre-commit hook restored**: `hooks/pre-commit` was overwritten by `pre-commit install` (Jan 17); restored custom bash script and added call to `pre-commit run --hook-stage commit` so `.pre-commit-config.yaml` checks also run locally on staged files
 - **`forbid-mock` false positive**: Added `hooks/` directory to exclusion pattern in `.pre-commit-config.yaml` to prevent the hook's own source code from triggering the check
@@ -16,8 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **[#19] `quickstart.sh` 安装策略统一**：新增 Step 3/4 显式从 PyPI 安装依赖（`isagellm-protocol isagellm-core isagellm-backend`）；本仓库以 editable 方式安装（Step 4/4）
-
-
 
 ### Added
 - `workloads.py`: 新增 TPCH/TPCC 风格 query workloads（`Q1`~`Q8`）
@@ -42,7 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 支持 `dry_run` 参数，不实际上传用于测试流程
   - 自动启动 sagellm 服务（如果 self-hosted 上未运行）
   - Job Summary 输出美观的发布摘要表格
-
 
 - `model_benchmarks.py`：实现 live E2E benchmark 模式（`--live` flag）
   - `run_e2e_model_benchmarks` 新增 `backend_url`、`api_key`、`request_timeout`、`server_wait_s` 参数
