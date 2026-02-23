@@ -1,18 +1,16 @@
 # Upload Benchmark Results to Hugging Face
-# 当 benchmark 仓库的 main 或 main-dev 分支有新的 leaderboard 数据提交时，
-# 自动聚合并上传到 Hugging Face Datasets Hub
+#
+# 触发方式（仅手动）：
+#   - workflow_dispatch：手动触发（用于本地 aggregate 后直接上传）
+#
+# 注意：push 触发已禁用，因为 benchmark-publish.yml 包含完整的
+# run → aggregate → upload 流水线，push hf_data/ 会与之并行冲突。
+# 如需自动上传，请使用 benchmark-publish.yml。
 
 name: Upload to Hugging Face
 
 on:
-  push:
-    branches:
-      - main
-      - main-dev
-    paths:
-      - 'hf_data/*.json'  # 只监听 hf_data/ 的 JSON 文件变化
-  
-  # 手动触发
+  # 仅手动触发（避免与 benchmark-publish.yml 并行冲突）
   workflow_dispatch:
 
 env:

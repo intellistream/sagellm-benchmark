@@ -237,12 +237,12 @@ def main():
     user_single_file = hf_data_dir / "leaderboard_single.json"
     user_multi_file = hf_data_dir / "leaderboard_multi.json"
 
-    if not user_single_file.exists() or not user_multi_file.exists():
-        print("  ⚠️ 缺少必要文件")
+    if not user_single_file.exists() and not user_multi_file.exists():
+        print("  ⚠️ 缺少所有必要文件（leaderboard_single.json 和 leaderboard_multi.json 均不存在）")
         exit(1)
 
-    user_single = json.loads(user_single_file.read_text(encoding="utf-8"))
-    user_multi = json.loads(user_multi_file.read_text(encoding="utf-8"))
+    user_single = json.loads(user_single_file.read_text(encoding="utf-8")) if user_single_file.exists() else []
+    user_multi = json.loads(user_multi_file.read_text(encoding="utf-8")) if user_multi_file.exists() else []
     print(f"  ✓ Single: {len(user_single)} 条")
     print(f"  ✓ Multi: {len(user_multi)} 条")
 
