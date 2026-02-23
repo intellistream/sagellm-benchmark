@@ -1,0 +1,180 @@
+{
+  "kind": "e2e",
+  "simulate": true,
+  "models": [
+    "Qwen/Qwen2-7B-Instruct"
+  ],
+  "batch_sizes": [
+    1,
+    4,
+    8
+  ],
+  "precisions": [
+    "fp16",
+    "int8"
+  ],
+  "summary": {
+    "total_rows": 12,
+    "avg_ttft_ms": 57.393508996351585,
+    "avg_tbt_ms": 11.56206289477439,
+    "avg_throughput_tps": 142.81508428005947
+  },
+  "rows": [
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "fp16",
+      "scenario": "short_b1",
+      "batch_size": 1,
+      "ttft_ms": 44.40704490376842,
+      "tbt_ms": 8.32915465524613,
+      "throughput_tps": 102.5962357349947,
+      "latency_p50_ms": 1102.2096861200268,
+      "latency_p95_ms": 1102.2096861200268,
+      "latency_p99_ms": 1102.2096861200268,
+      "memory_mb": 5025.6
+    },
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "fp16",
+      "scenario": "long_b1",
+      "batch_size": 1,
+      "ttft_ms": 76.60528004886974,
+      "tbt_ms": 15.466622103496439,
+      "throughput_tps": 59.94667089886611,
+      "latency_p50_ms": 7980.04917493555,
+      "latency_p95_ms": 7980.04917493555,
+      "latency_p99_ms": 7980.04917493555,
+      "memory_mb": 5409.6
+    },
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "fp16",
+      "scenario": "short_b4",
+      "batch_size": 4,
+      "ttft_ms": 48.12852964450128,
+      "tbt_ms": 8.821379566642337,
+      "throughput_tps": 186.27657767817604,
+      "latency_p50_ms": 448.24110284577876,
+      "latency_p95_ms": 448.24110284577876,
+      "latency_p99_ms": 448.24110284577876,
+      "memory_mb": 5025.6
+    },
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "fp16",
+      "scenario": "long_b4",
+      "batch_size": 4,
+      "ttft_ms": 83.30721875260603,
+      "tbt_ms": 15.430668935104938,
+      "throughput_tps": 101.64354277799534,
+      "latency_p50_ms": 2899.4042994092574,
+      "latency_p95_ms": 2899.4042994092574,
+      "latency_p99_ms": 2899.4042994092574,
+      "memory_mb": 5409.6
+    },
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "fp16",
+      "scenario": "short_b8",
+      "batch_size": 8,
+      "ttft_ms": 47.581957976379044,
+      "tbt_ms": 8.517075201281667,
+      "throughput_tps": 246.04176081423657,
+      "latency_p50_ms": 240.73705629115972,
+      "latency_p95_ms": 240.73705629115972,
+      "latency_p99_ms": 240.73705629115972,
+      "memory_mb": 5025.6
+    },
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "fp16",
+      "scenario": "long_b8",
+      "batch_size": 8,
+      "ttft_ms": 74.68427723922166,
+      "tbt_ms": 16.54524774875555,
+      "throughput_tps": 128.82682615765336,
+      "latency_p50_ms": 1584.4381343131656,
+      "latency_p95_ms": 1584.4381343131656,
+      "latency_p99_ms": 1584.4381343131656,
+      "memory_mb": 5409.6
+    },
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "int8",
+      "scenario": "short_b1",
+      "batch_size": 1,
+      "ttft_ms": 35.30564435410527,
+      "tbt_ms": 7.44206602731863,
+      "throughput_tps": 113.51143641218599,
+      "latency_p50_ms": 980.4480298235712,
+      "latency_p95_ms": 980.4480298235712,
+      "latency_p99_ms": 980.4480298235712,
+      "memory_mb": 5025.6
+    },
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "int8",
+      "scenario": "long_b1",
+      "batch_size": 1,
+      "ttft_ms": 65.12429910812479,
+      "tbt_ms": 14.784410793015843,
+      "throughput_tps": 66.82795192805158,
+      "latency_p50_ms": 7619.95821433922,
+      "latency_p95_ms": 7619.95821433922,
+      "latency_p99_ms": 7619.95821433922,
+      "memory_mb": 5409.6
+    },
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "int8",
+      "scenario": "short_b4",
+      "batch_size": 4,
+      "ttft_ms": 38.80789365536763,
+      "tbt_ms": 8.213371908564937,
+      "throughput_tps": 190.28734271144074,
+      "latency_p50_ms": 411.3429766509916,
+      "latency_p95_ms": 411.3429766509916,
+      "latency_p99_ms": 411.3429766509916,
+      "memory_mb": 5025.6
+    },
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "int8",
+      "scenario": "long_b4",
+      "batch_size": 4,
+      "ttft_ms": 73.76460218493756,
+      "tbt_ms": 13.68065853513446,
+      "throughput_tps": 117.80743082896535,
+      "latency_p50_ms": 2570.484784846977,
+      "latency_p95_ms": 2570.484784846977,
+      "latency_p99_ms": 2570.484784846977,
+      "memory_mb": 5409.6
+    },
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "int8",
+      "scenario": "short_b8",
+      "batch_size": 8,
+      "ttft_ms": 36.33199244259039,
+      "tbt_ms": 7.383527271269361,
+      "throughput_tps": 258.1632067445738,
+      "latency_p50_ms": 203.7798430588777,
+      "latency_p95_ms": 203.7798430588777,
+      "latency_p99_ms": 203.7798430588777,
+      "memory_mb": 5025.6
+    },
+    {
+      "model": "Qwen/Qwen2-7B-Instruct",
+      "precision": "int8",
+      "scenario": "long_b8",
+      "batch_size": 8,
+      "ttft_ms": 64.67336764574723,
+      "tbt_ms": 14.130571991462398,
+      "throughput_tps": 141.85202867357398,
+      "latency_p50_ms": 1354.088061866691,
+      "latency_p95_ms": 1354.088061866691,
+      "latency_p99_ms": 1354.088061866691,
+      "memory_mb": 5409.6
+    }
+  ]
+}

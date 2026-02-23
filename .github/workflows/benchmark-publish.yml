@@ -1,0 +1,347 @@
+# =============================================================================
+# benchmark-publish.yml
+#
+# 自动化基准测试发布流水线
+#
+# 触发方式：
+#   1. 手动触发（workflow_dispatch）- 支持自定义参数
+#   2. 定时触发（schedule）          - 默认每周一 02:00 UTC 自动运行
+#   3. 推送带 [publish] 标记的 commit
+#
+# 工作流程：
+#   Step 1: 运行基准测试（self-hosted，需服务可用）
+#   Step 2: 聚合结果 → hf_data/
+#   Step 3: Schema 验证
+#   Step 4: 上传到 HuggingFace Dataset
+#   Step 5: 触发 sagellm-website 更新（repository_dispatch）
+# =============================================================================
+
+name: Benchmark Publish Pipeline
+
+on:
+  # 手动触发，支持参数选择
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Model to benchmark (HF repo or local path)'
+        required: false
+        default: 'sshleifer/tiny-gpt2'
+        type: string
+      workload:
+        description: 'Workload(s) to run: Q1/Q2/.../Q8/all/year1'
+        required: false
+        default: 'all'
+        type: string
+      backend:
+        description: 'Backend type'
+        required: false
+        default: 'cpu'
+        type: choice
+        options: [cpu, cuda, vllm]
+      backend_url:
+        description: 'Backend URL (OpenAI-compatible endpoint)'
+        required: false
+        default: 'http://localhost:8000/v1'
+        type: string
+      skip_run:
+        description: 'Skip benchmark run (only aggregate+upload existing outputs)'
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: 'Dry run (do not upload to HF)'
+        required: false
+        default: false
+        type: boolean
+
+  # 定时自动发布：每周一 UTC 02:00（北京时间 10:00）
+  schedule:
+    - cron: '0 2 * * 1'
+
+  # commit 消息含 [publish] 时触发
+  push:
+    branches: [main, main-dev]
+    paths:
+      - 'outputs/**'
+    # 或者通过 commit message 触发
+    # 在 job 中用 contains(github.event.head_commit.message, '[publish]') 判断
+
+env:
+  HF_REPO: intellistream/sagellm-benchmark-results
+  HF_ENDPOINT: ${{ vars.HF_ENDPOINT || 'https://huggingface.co' }}
+  # 默认参数（schedule 触发时使用）
+  DEFAULT_MODEL: 'sshleifer/tiny-gpt2'
+  DEFAULT_WORKLOAD: 'all'
+  DEFAULT_BACKEND: 'cpu'
+  DEFAULT_BACKEND_URL: 'http://localhost:8000/v1'
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Job 1: 运行基准测试 + 聚合结果
+  # -------------------------------------------------------------------------
+  run-and-aggregate:
+    name: Run Benchmark & Aggregate
+    runs-on: self-hosted
+    timeout-minutes: 60
+
+    outputs:
+      # 是否有新结果可上传
+      has_results: ${{ steps.check_results.outputs.has_results }}
+      result_count: ${{ steps.check_results.outputs.result_count }}
+      run_summary: ${{ steps.save_summary.outputs.summary }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse parameters (schedule fallback to defaults)
+        id: params
+        run: |
+          # workflow_dispatch 有 inputs，schedule/push 没有，用默认值
+          MODEL="${{ github.event.inputs.model || env.DEFAULT_MODEL }}"
+          WORKLOAD="${{ github.event.inputs.workload || env.DEFAULT_WORKLOAD }}"
+          BACKEND="${{ github.event.inputs.backend || env.DEFAULT_BACKEND }}"
+          BACKEND_URL="${{ github.event.inputs.backend_url || env.DEFAULT_BACKEND_URL }}"
+          SKIP_RUN="${{ github.event.inputs.skip_run || 'false' }}"
+          DRY_RUN="${{ github.event.inputs.dry_run || 'false' }}"
+
+          echo "model=${MODEL}"         >> "$GITHUB_OUTPUT"
+          echo "workload=${WORKLOAD}"   >> "$GITHUB_OUTPUT"
+          echo "backend=${BACKEND}"     >> "$GITHUB_OUTPUT"
+          echo "backend_url=${BACKEND_URL}" >> "$GITHUB_OUTPUT"
+          echo "skip_run=${SKIP_RUN}"   >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}"     >> "$GITHUB_OUTPUT"
+
+          echo "📋 Parameters:"
+          echo "  model=${MODEL}  workload=${WORKLOAD}  backend=${BACKEND}"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Configure mirrors (China network)
+        run: |
+          mkdir -p ~/.pip
+          cat > ~/.pip/pip.conf << 'EOF'
+          [global]
+          index-url = https://pypi.tuna.tsinghua.edu.cn/simple
+          trusted-host = pypi.tuna.tsinghua.edu.cn
+          EOF
+          echo "HF_ENDPOINT=https://hf-mirror.com" >> $GITHUB_ENV
+
+      - name: Install sagellm-benchmark
+        run: |
+          pip install isagellm-benchmark huggingface_hub
+
+      - name: Check backend service health
+        if: steps.params.outputs.skip_run != 'true'
+        id: health
+        run: |
+          URL="${{ steps.params.outputs.backend_url }}"
+          echo "🔍 Checking: ${URL}/models"
+          if curl -sf --max-time 10 "${URL}/models" > /dev/null 2>&1; then
+            echo "✓ Backend is reachable"
+            echo "service_up=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "⚠️ Backend ${URL} not reachable"
+            echo "service_up=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Start sagellm service (if not running)
+        if: |
+          steps.params.outputs.skip_run != 'true' &&
+          steps.health.outputs.service_up != 'true'
+        run: |
+          echo "🚀 Starting sagellm service..."
+          # 尝试启动内置 CPU 服务
+          sage-llm serve \
+            --model "${{ steps.params.outputs.model }}" \
+            --port 8000 \
+            --backend cpu \
+            --no-gpu &
+          SERVICE_PID=$!
+          echo "SERVICE_PID=${SERVICE_PID}" >> $GITHUB_ENV
+
+          # 等待服务就绪（最多 60s）
+          for i in $(seq 1 12); do
+            sleep 5
+            if curl -sf --max-time 5 "http://localhost:8000/v1/models" > /dev/null 2>&1; then
+              echo "✓ Service started (PID=${SERVICE_PID})"
+              break
+            fi
+            echo "  Waiting... (${i}/12)"
+          done
+
+      - name: Run benchmark
+        if: steps.params.outputs.skip_run != 'true'
+        run: |
+          echo "🏃 Running benchmark..."
+          sagellm-benchmark run \
+            --workload "${{ steps.params.outputs.workload }}" \
+            --backend "${{ steps.params.outputs.backend }}" \
+            --backend-url "${{ steps.params.outputs.backend_url }}" \
+            --model "${{ steps.params.outputs.model }}" \
+            --verbose
+
+      - name: Check results
+        id: check_results
+        run: |
+          COUNT=$(find outputs/ -name "*_leaderboard.json" 2>/dev/null | wc -l || echo 0)
+          echo "result_count=${COUNT}" >> "$GITHUB_OUTPUT"
+          if [[ "${COUNT}" -gt 0 ]]; then
+            echo "has_results=true" >> "$GITHUB_OUTPUT"
+            echo "✓ Found ${COUNT} leaderboard JSON files"
+            find outputs/ -name "*_leaderboard.json" | head -20
+          else
+            echo "has_results=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️ No leaderboard files found"
+          fi
+
+      - name: Aggregate results → hf_data/
+        if: steps.check_results.outputs.has_results == 'true'
+        run: |
+          echo "🔀 Aggregating results..."
+          python scripts/aggregate_for_hf.py
+
+          echo "📊 Aggregated files:"
+          for f in hf_data/leaderboard_single.json hf_data/leaderboard_multi.json; do
+            if [[ -f "${f}" ]]; then
+              COUNT=$(python3 -c "import json;d=json.load(open('${f}'));print(len(d))" 2>/dev/null || echo "?")
+              echo "  ✓ ${f} (${COUNT} records)"
+            fi
+          done
+
+      - name: Validate schema
+        if: steps.check_results.outputs.has_results == 'true'
+        run: |
+          if [[ -f "data/validate_schema.py" ]]; then
+            python3 data/validate_schema.py hf_data/leaderboard_single.json && echo "✓ Schema valid" || echo "⚠️ Schema warnings (non-fatal)"
+          else
+            echo "ℹ️ validate_schema.py not found, skipping"
+          fi
+
+      - name: Save run summary
+        id: save_summary
+        run: |
+          SUMMARY="model=${{ steps.params.outputs.model }} workload=${{ steps.params.outputs.workload }} backend=${{ steps.params.outputs.backend }} count=${{ steps.check_results.outputs.result_count }}"
+          echo "summary=${SUMMARY}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload hf_data as artifact
+        if: steps.check_results.outputs.has_results == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: leaderboard-data
+          path: hf_data/*.json
+          retention-days: 30
+
+      - name: Stop service (cleanup)
+        if: always() && env.SERVICE_PID != ''
+        run: |
+          kill "${SERVICE_PID}" 2>/dev/null || true
+          echo "✓ Service stopped"
+
+  # -------------------------------------------------------------------------
+  # Job 2: 上传到 HuggingFace
+  # -------------------------------------------------------------------------
+  upload-to-hf:
+    name: Upload to HuggingFace
+    runs-on: self-hosted
+    needs: run-and-aggregate
+    if: |
+      needs.run-and-aggregate.outputs.has_results == 'true' &&
+      github.event.inputs.dry_run != 'true'
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: leaderboard-data
+          path: hf_data/
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install huggingface_hub
+
+      - name: Merge with latest HF data (concurrent-safe)
+        env:
+          HF_REPO: ${{ env.HF_REPO }}
+        run: python scripts/merge_and_upload.py
+
+      - name: Upload to HuggingFace
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO: ${{ env.HF_REPO }}
+        run: python scripts/upload_to_hf.py
+
+      - name: Show result URL
+        run: |
+          echo ""
+          echo "✅ Upload complete!"
+          echo "🔗 Dataset: https://huggingface.co/datasets/${{ env.HF_REPO }}"
+          echo "🌐 Website: https://intellistream.github.io/sagellm-website"
+
+  # -------------------------------------------------------------------------
+  # Job 3: 通知 sagellm-website 刷新（可选）
+  # -------------------------------------------------------------------------
+  notify-website:
+    name: Notify Website
+    runs-on: self-hosted
+    needs: upload-to-hf
+    if: success()
+    timeout-minutes: 5
+
+    steps:
+      - name: Dispatch website update event
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.rest.repos.createDispatchEvent({
+                owner: 'intellistream',
+                repo: 'sagellm-website',
+                event_type: 'benchmark-data-updated',
+                client_payload: {
+                  summary: '${{ needs.run-and-aggregate.outputs.run_summary }}',
+                  timestamp: new Date().toISOString(),
+                  hf_repo: process.env.HF_REPO
+                }
+              });
+              console.log('✓ Website notified');
+            } catch (e) {
+              console.log('⚠️ Could not notify website (non-fatal):', e.message);
+            }
+
+  # -------------------------------------------------------------------------
+  # Job 4: 发布总结
+  # -------------------------------------------------------------------------
+  summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [run-and-aggregate, upload-to-hf, notify-website]
+    if: always()
+
+    steps:
+      - name: Print summary
+        run: |
+          echo "## 📊 Benchmark Publish Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 步骤 | 状态 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Run & Aggregate | ${{ needs.run-and-aggregate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Upload to HF    | ${{ needs.upload-to-hf.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Notify Website  | ${{ needs.notify-website.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run info:** ${{ needs.run-and-aggregate.outputs.run_summary }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 [HF Dataset](https://huggingface.co/datasets/${{ env.HF_REPO }}) | [Website](https://intellistream.github.io/sagellm-website)" >> $GITHUB_STEP_SUMMARY

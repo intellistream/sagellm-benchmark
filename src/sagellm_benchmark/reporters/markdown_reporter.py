@@ -91,8 +91,11 @@ class MarkdownReporter:
         lines.append("")
         lines.append("| Metric | Value |")
         lines.append("|--------|-------|")
-        lines.append(f"| Avg Throughput | {metrics.avg_throughput_tps:.2f} tokens/s |")
+        lines.append(f"| Request Throughput | {metrics.request_throughput_rps:.2f} req/s |")
+        lines.append(f"| Input Throughput | {metrics.input_throughput_tps:.2f} tokens/s |")
+        lines.append(f"| Output Throughput | {metrics.output_throughput_tps:.2f} tokens/s |")
         lines.append(f"| Total Throughput | {metrics.total_throughput_tps:.2f} tokens/s |")
+        lines.append(f"| Avg Throughput | {metrics.avg_throughput_tps:.2f} tokens/s |")
         lines.append("")
 
         # === 内存 ===

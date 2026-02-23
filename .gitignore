@@ -37,7 +37,6 @@ env/
 .coverage
 htmlcov/
 .tox/
-.mypy_cache/
 .ruff_cache/
 
 # OS
@@ -73,6 +72,7 @@ outputs/**/benchmark_summary.json
 
 # ❌ 忽略: 旧的 results/ 目录
 results/
+benchmark_results/*
 
 # RFC drafts
 .github/rfc*

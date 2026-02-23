@@ -16,42 +16,74 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 from pathlib import Path
 
 # HF 配置
-HF_REPO = "wangyao36/sagellm-benchmark-results"
+HF_REPO = "intellistream/sagellm-benchmark-results"
 HF_BRANCH = "main"
 
 
 def download_from_hf(filename: str) -> list[dict]:
-    """从 HF 下载最新数据（公开，无需 token）"""
-    # 优先使用 mirror，避免网络超时
-    mirror = "https://hf-mirror.com"
-    url = f"{mirror}/datasets/{HF_REPO}/resolve/{HF_BRANCH}/{filename}"
-    print(f"  📥 {url}")
+    """
+    从 HF 下载最新数据（公开，无需 token）
 
-    try:
-        with urllib.request.urlopen(url, timeout=30) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            print(f"    ✓ {len(data)} 条记录")
-            return data
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            print(f"    ⚠️ 文件不存在（首次上传）")
-        else:
-            print(f"    ⚠️ HTTP {e.code}: {e.reason}")
-        return []
-    except Exception as e:
-        print(f"    ⚠️ 下载失败: {e}")
-        return []
+    端点选择策略（优先级从高到低）：
+    1. 环境变量 HF_ENDPOINT（如果设置）
+    2. 官方地址 https://huggingface.co（默认）
+    3. 如果官方失败，自动回退到 https://hf-mirror.com
+    """
+    # 1. 优先使用环境变量指定的端点
+    endpoint = os.getenv("HF_ENDPOINT", "https://huggingface.co")
+
+    # 2. 定义备用端点列表（如果主端点失败）
+    fallback_endpoints = []
+    if endpoint != "https://hf-mirror.com":
+        # 如果当前不是镜像，将镜像作为备用
+        fallback_endpoints.append("https://hf-mirror.com")
+    if endpoint != "https://huggingface.co":
+        # 如果当前不是官方，将官方作为备用
+        fallback_endpoints.append("https://huggingface.co")
+
+    # 3. 尝试主端点
+    endpoints_to_try = [endpoint] + fallback_endpoints
+
+    for idx, ep in enumerate(endpoints_to_try):
+        url = f"{ep}/datasets/{HF_REPO}/resolve/{HF_BRANCH}/{filename}"
+        is_primary = idx == 0
+        prefix = "  📥" if is_primary else "  🔄 回退到"
+
+        print(f"{prefix} {url}")
+
+        try:
+            with urllib.request.urlopen(url, timeout=30) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                print(f"    ✓ {len(data)} 条记录")
+                return data
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                print("    ⚠️ 文件不存在（首次上传）")
+                return []  # 404 是确定的，无需重试
+            else:
+                print(f"    ⚠️ HTTP {e.code}: {e.reason}")
+                if idx < len(endpoints_to_try) - 1:
+                    continue  # 尝试下一个端点
+                return []
+        except Exception as e:
+            print(f"    ⚠️ 下载失败: {e}")
+            if idx < len(endpoints_to_try) - 1:
+                continue  # 尝试下一个端点
+            return []
+
+    return []
 
 
 def get_config_key(entry: dict) -> str:
     """
     生成配置唯一标识 key
 
-    相同配置 = 相同硬件 + 相同模型 + 相同 workload + 相同精度
+    相同配置 = 相同硬件 + 相同模型 + 相同 workload + 相同精度 + 相同版本
     """
     hw = entry.get("hardware", {})
     model = entry.get("model", {})
@@ -66,6 +98,7 @@ def get_config_key(entry: dict) -> str:
         model.get("precision", "FP16"),
         str(workload.get("input_length", 0)),
         str(workload.get("output_length", 0)),
+        str(entry.get("sagellm_version") or entry.get("versions", {}).get("benchmark") or "unknown"),
     ]
 
     # 如果是多节点，加入节点信息
@@ -168,7 +201,7 @@ def main():
     hf_data_dir = Path("hf_data")
 
     if not hf_data_dir.exists():
-        print(f"\n❌ hf_data/ 目录不存在")
+        print("\n❌ hf_data/ 目录不存在")
         print("💡 用户应该先运行 'sagellm-benchmark aggregate'")
         exit(1)
 
@@ -178,7 +211,7 @@ def main():
     user_multi_file = hf_data_dir / "leaderboard_multi.json"
 
     if not user_single_file.exists() or not user_multi_file.exists():
-        print(f"  ⚠️ 缺少必要文件")
+        print("  ⚠️ 缺少必要文件")
         exit(1)
 
     user_single = json.loads(user_single_file.read_text(encoding="utf-8"))

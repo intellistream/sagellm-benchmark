@@ -21,6 +21,13 @@ New here? See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide.
 - Standardized JSON metrics and reports
 - One-command benchmark runner
 - Extensible backend support
+- Performance benchmark CLI (`perf`) for operator and E2E benchmark baselines
+
+## Dependencies
+
+- **isagellm-protocol** (>=0.4.0.0)
+- **isagellm-core** (>=0.4.0.0)
+- **isagellm-backend** (>=0.4.0.1)
 
 ## Installation
 
@@ -28,37 +35,64 @@ New here? See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide.
 pip install isagellm-benchmark
 ```
 
+For specific backend support:
+
+```bash
+# With vLLM support
+pip install isagellm-benchmark[vllm-client]
+
+# With LMDeploy support
+pip install isagellm-benchmark[lmdeploy-client]
+
+# With OpenAI/Gateway support
+pip install isagellm-benchmark[openai-client]
+```
+
 ## Quick Start
 
 ```bash
-# Run all workloads and generate reports
-./run_benchmark.sh
+# Run all workloads (Short, Long, Stress) uses CPU backend by default
+sagellm-benchmark run --workload m1 --backend cpu --output ./benchmark_results
 
-# Specify a custom output directory
-./run_benchmark.sh ./my_results
+# Generate a markdown report
+sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format markdown
+
+# Run migrated performance benchmarks
+sagellm-benchmark perf --type operator --device cpu
+sagellm-benchmark perf --type e2e --model Qwen/Qwen2-7B-Instruct --batch-size 1 --batch-size 4
+
+# Generate charts (PNG/PDF, dark theme)
+sagellm-benchmark perf --type e2e --plot --plot-format png --plot-format pdf --theme dark
 ```
 
 CLI examples:
 
 ```bash
 # Run the full suite with the CPU backend
-sagellm-benchmark run --workload year1 --backend cpu
+sagellm-benchmark run --workload m1 --backend cpu
 
 # Run with a CPU model
-sagellm-benchmark run --workload year1 --backend cpu --model gpt2
+sagellm-benchmark run --workload m1 --backend cpu --model sshleifer/tiny-gpt2
 
 # Run a single workload
 sagellm-benchmark run --workload short --backend cpu
 
 # Generate reports
 sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format markdown
+
+# Generate report from perf JSON
+sagellm-benchmark report --input ./benchmark_results/perf_results.json --format markdown
+
+# Re-generate charts from existing perf JSON
+sagellm-benchmark report --input ./benchmark_results/perf_results.json --plot --plot-format png
 ```
 
 ## Workloads
 
-- **Short**: 128 prompt → 128 output (5 requests)
-- **Long**: 200 prompt → 200 output (3 requests)
-- **Stress**: 256 prompt → 256 output (10 concurrent requests)
+- **m1** (Year 1 Demo): Full suite of predefined workloads (Short + Long + Stress)
+- **short**: 128 prompt → 128 output (5 requests)
+- **long**: 200 prompt → 200 output (3 requests)
+- **stress**: 256 prompt → 256 output (10 concurrent requests)
 
 ## Outputs
 
@@ -79,7 +113,58 @@ Metrics include latency, throughput, memory, and error rates. See
 ## Backends
 
 - **cpu**: CPU inference via HuggingFace Transformers (requires `--model`)
-- **planned**: lmdeploy, vllm
+- **planned**: lmdeploy, vllm (Clients implemented, CLI integration pending)
+
+## Development
+
+### Setup
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/intellistream/sagellm-benchmark.git
+cd sagellm-benchmark
+
+# 2. Install in editable mode with dev dependencies
+pip install -e .[dev,all-clients]
+```
+
+### Running Tests
+
+```bash
+pytest tests/
+```
+
+### Performance Regression Check (CI)
+
+```bash
+# Generate current perf snapshot
+sagellm-benchmark perf \
+   --type e2e \
+   --model Qwen/Qwen2-7B-Instruct \
+   --batch-size 1 --batch-size 4 --batch-size 8 \
+   --precision fp16 --precision int8 \
+   --output-json benchmark_results/perf_current.json \
+   --output-markdown benchmark_results/perf_current.md
+
+# Compare current snapshot with baseline
+python scripts/compare_performance_baseline.py \
+   --baseline benchmarks/baselines/perf_baseline_e2e.json \
+   --current benchmark_results/perf_current.json \
+   --warning-threshold 5 \
+   --critical-threshold 10 \
+   --summary-json benchmark_results/perf_comparison_summary.json \
+   --report-md benchmark_results/perf_comparison_report.md
+```
+
+### Code Quality
+
+```bash
+# Linting
+ruff check .
+
+# Type checking
+mypy src/
+```
 
 ## Documentation
 

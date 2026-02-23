@@ -9,7 +9,7 @@ import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sagellm_benchmark.types import AggregatedMetrics
@@ -25,7 +25,7 @@ WORKLOAD_SPECS = {
 
 class LeaderboardExporter:
     """Export benchmark results to leaderboard format.
-    
+
     Converts internal benchmark metrics to the format required by
     sagellm-website leaderboard (leaderboard_v1.schema.json).
     """
@@ -33,7 +33,7 @@ class LeaderboardExporter:
     @staticmethod
     def detect_hardware_info() -> dict[str, Any]:
         """Detect hardware information from system.
-        
+
         Returns:
             Dictionary with hardware fields
         """
@@ -48,24 +48,27 @@ class LeaderboardExporter:
             "memory_per_chip_gb": None,
             "total_memory_gb": None,
         }
-        
+
         # Try to detect GPU if available
         try:
             import torch
+
             if torch.cuda.is_available():
                 hardware["vendor"] = "NVIDIA"
                 hardware["chip_model"] = torch.cuda.get_device_name(0)
-                
+
                 # 支持通过环境变量强制单卡配置
-                force_single_chip = os.getenv("SAGELLM_FORCE_SINGLE_CHIP", "false").lower() == "true"
-                
+                force_single_chip = (
+                    os.getenv("SAGELLM_FORCE_SINGLE_CHIP", "false").lower() == "true"
+                )
+
                 if force_single_chip:
                     hardware["chip_count"] = 1
                     hardware["chips_per_node"] = 1
                 else:
                     hardware["chip_count"] = torch.cuda.device_count()
                     hardware["chips_per_node"] = torch.cuda.device_count()
-                
+
                 hardware["memory_per_chip_gb"] = round(
                     torch.cuda.get_device_properties(0).total_memory / (1024**3), 2
                 )
@@ -82,10 +85,11 @@ class LeaderboardExporter:
                     hardware["intra_node_interconnect"] = "None"
         except ImportError:
             pass
-        
+
         # Try to detect Ascend NPU
         try:
             import torch_npu
+
             if torch_npu.npu.is_available():
                 hardware["vendor"] = "Huawei"
                 hardware["chip_model"] = "Ascend 910B"  # Default
@@ -99,13 +103,13 @@ class LeaderboardExporter:
                     hardware["intra_node_interconnect"] = "None"
         except ImportError:
             pass
-        
+
         return hardware
 
     @staticmethod
     def detect_environment() -> dict[str, Any]:
         """Detect environment information.
-        
+
         Returns:
             Dictionary with environment fields
         """
@@ -117,16 +121,17 @@ class LeaderboardExporter:
             "cann_version": None,
             "driver_version": None,
         }
-        
+
         # Detect PyTorch version
         try:
             import torch
+
             env["pytorch_version"] = torch.__version__
             if torch.cuda.is_available():
                 env["cuda_version"] = torch.version.cuda
         except ImportError:
             pass
-        
+
         # Detect NVIDIA driver
         try:
             result = subprocess.run(
@@ -139,17 +144,17 @@ class LeaderboardExporter:
                 env["driver_version"] = result.stdout.strip().split("\n")[0]
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
-        
+
         return env
 
     @staticmethod
     def infer_config_type(chip_count: int, has_cluster: bool) -> str:
         """Infer configuration type from chip count and cluster info.
-        
+
         Args:
             chip_count: Number of chips/GPUs
             has_cluster: Whether cluster configuration exists
-            
+
         Returns:
             One of: "single_gpu", "multi_gpu", "multi_node"
         """
@@ -161,6 +166,19 @@ class LeaderboardExporter:
             return "single_gpu"
 
     @staticmethod
+    def _resolve_version(
+        versions: dict[str, Any],
+        aliases: tuple[str, ...],
+        default: str = "N/A",
+    ) -> str:
+        """Resolve component version from metadata keys with alias fallback."""
+        for key in aliases:
+            value = versions.get(key)
+            if value:
+                return str(value)
+        return default
+
+    @staticmethod
     def export_to_leaderboard(
         metrics: AggregatedMetrics,
         config: dict[str, Any],
@@ -169,26 +187,26 @@ class LeaderboardExporter:
         custom_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Export metrics to leaderboard format.
-        
+
         Args:
             metrics: Aggregated metrics from benchmark
             config: Run configuration dict
             workload_name: Name of the workload (e.g., "short_input")
             output_path: Path to save the leaderboard entry JSON
             custom_metadata: Optional custom metadata to include
-            
+
         Returns:
             The leaderboard entry dictionary
         """
         # Detect hardware and environment
         hardware = LeaderboardExporter.detect_hardware_info()
         environment = LeaderboardExporter.detect_environment()
-        
+
         # Infer config_type
         config_type = LeaderboardExporter.infer_config_type(
             hardware["chip_count"], has_cluster=False
         )
-        
+
         # Extract model info from config (优先使用 model_path，去掉路径部分)
         model_path = config.get("model_path", config.get("model", "unknown"))
         # 提取模型名称（处理路径和 HF 格式）
@@ -196,16 +214,18 @@ class LeaderboardExporter:
             model_name = model_path.split("/")[-1]  # HF: "sshleifer/tiny-gpt2" → "tiny-gpt2"
         else:
             model_name = model_path  # 本地模型："gpt2" → "gpt2"
-        
+
         model_info = {
             "name": model_name,
             "parameters": "unknown",  # TODO: Extract from model name
             "precision": "FP32",  # Default
             "quantization": "None",
         }
-        
+
         # Extract workload info (根据 workload_name 映射)
-        workload_spec = WORKLOAD_SPECS.get(workload_name, {"input_length": 128, "output_length": 128})
+        workload_spec = WORKLOAD_SPECS.get(
+            workload_name, {"input_length": 128, "output_length": 128}
+        )
         workload_info = {
             "input_length": workload_spec["input_length"],
             "output_length": workload_spec["output_length"],
@@ -213,7 +233,7 @@ class LeaderboardExporter:
             "concurrent_requests": 1,
             "dataset": config.get("dataset", "default"),
         }
-        
+
         # Map metrics to leaderboard format
         leaderboard_metrics = {
             "ttft_ms": metrics.avg_ttft_ms,
@@ -227,30 +247,51 @@ class LeaderboardExporter:
             "kv_used_bytes": metrics.total_kv_used_bytes,
             "evict_count": metrics.total_evict_count,
             "evict_ms": metrics.total_evict_ms,
-            "spec_accept_rate": metrics.avg_spec_accept_rate if metrics.avg_spec_accept_rate > 0 else None,
+            "spec_accept_rate": metrics.avg_spec_accept_rate
+            if metrics.avg_spec_accept_rate > 0
+            else None,
         }
-        
+
         # Build leaderboard entry
+        config_versions = config.get("versions", {})
+        component_versions = {
+            "protocol": LeaderboardExporter._resolve_version(
+                config_versions, ("sagellm_protocol", "protocol")
+            ),
+            "backend": LeaderboardExporter._resolve_version(
+                config_versions, ("sagellm_backend", "backend")
+            ),
+            "core": LeaderboardExporter._resolve_version(config_versions, ("sagellm_core", "core")),
+            "control_plane": LeaderboardExporter._resolve_version(
+                config_versions, ("sagellm_control_plane", "control_plane")
+            ),
+            "gateway": LeaderboardExporter._resolve_version(
+                config_versions, ("sagellm_gateway", "gateway")
+            ),
+            "kv_cache": LeaderboardExporter._resolve_version(
+                config_versions, ("sagellm_kv_cache", "kv_cache")
+            ),
+            "comm": LeaderboardExporter._resolve_version(config_versions, ("sagellm_comm", "comm")),
+            "compression": LeaderboardExporter._resolve_version(
+                config_versions, ("sagellm_compression", "compression")
+            ),
+            "benchmark": LeaderboardExporter._resolve_version(
+                config_versions, ("sagellm_benchmark", "benchmark")
+            ),
+        }
+
         entry = {
             "entry_id": str(uuid.uuid4()),
-            "sagellm_version": config.get("versions", {}).get("sagellm_benchmark", "0.3.0.3"),
+            "sagellm_version": LeaderboardExporter._resolve_version(
+                config_versions, ("sagellm", "sagellm_benchmark", "benchmark")
+            ),
             "config_type": config_type,
             "hardware": hardware,
             "model": model_info,
             "workload": workload_info,
             "metrics": leaderboard_metrics,
             "cluster": None,  # Single-node for now
-            "versions": {
-                "protocol": config.get("versions", {}).get("sagellm_protocol", "0.1.1.0"),
-                "backend": config.get("versions", {}).get("sagellm_backend", "0.3.0.6"),
-                "core": config.get("versions", {}).get("sagellm_core", "0.3.0.5"),
-                "control_plane": "0.1.1.5",
-                "gateway": "0.1.1.5",
-                "kv_cache": "0.1.1.6",
-                "comm": "0.1.1.7",
-                "compression": "0.1.1.7",
-                "benchmark": config.get("versions", {}).get("sagellm_benchmark", "0.3.0.3"),
-            },
+            "versions": component_versions,
             "environment": environment,
             "kv_cache_config": {
                 "enabled": True,
@@ -264,19 +305,21 @@ class LeaderboardExporter:
                 "data_source": "automated-benchmark",
                 "reproducible_cmd": f"sagellm-benchmark run --workload {config.get('workload')} --backend {config.get('backend')} --model {config.get('model')}",
                 "git_commit": None,
-                "release_date": config.get("timestamp", "").split("T")[0] if config.get("timestamp") else None,
+                "release_date": config.get("timestamp", "").split("T")[0]
+                if config.get("timestamp")
+                else None,
                 "changelog_url": "https://github.com/intellistream/sagellm/blob/main/CHANGELOG.md",
                 "notes": f"Benchmark run: {workload_name}",
                 "verified": False,
             },
         }
-        
+
         # Merge custom metadata if provided
         if custom_metadata:
             entry["metadata"].update(custom_metadata)
-        
+
         # Save to file
         with open(output_path, "w") as f:
             json.dump(entry, f, indent=2)
-        
+
         return entry

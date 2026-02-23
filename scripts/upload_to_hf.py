@@ -14,7 +14,7 @@ from pathlib import Path
 from huggingface_hub import HfApi, login
 
 # 配置
-HF_REPO = "wangyao36/sagellm-benchmark-results"
+HF_REPO = "intellistream/sagellm-benchmark-results"
 HF_DATA_DIR = Path(__file__).parent.parent / "hf_data"
 
 
@@ -56,8 +56,8 @@ def main() -> None:
         print("❌ HF_TOKEN 环境变量未设置")
         exit(1)
 
-    # 配置 HF endpoint（支持 mirror）
-    hf_endpoint = os.environ.get("HF_ENDPOINT", "https://hf-mirror.com")
+    # 配置 HF endpoint（默认使用官方地址）
+    hf_endpoint = os.environ.get("HF_ENDPOINT", "https://huggingface.co")
     print(f"📡 Using HF endpoint: {hf_endpoint}")
     
     # 设置环境变量（huggingface_hub 会读取）

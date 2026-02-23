@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
 
 env:
-  HF_REPO: wangyao36/sagellm-benchmark-results
+  HF_REPO: intellistream/sagellm-benchmark-results
 
 jobs:
   upload-to-hf:
@@ -45,7 +45,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO: ${{ env.HF_REPO }}
-          HF_ENDPOINT: https://hf-mirror.com  # 使用国内 mirror 避免超时
+          # HF_ENDPOINT 已移除，脚本默认使用官方地址，失败时自动回退到镜像
         run: |
           python scripts/upload_to_hf.py
       

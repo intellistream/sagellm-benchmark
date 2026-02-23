@@ -2,6 +2,7 @@
 
 This client connects to any service using OpenAI's API protocol:
 - sagellm-gateway (primary use case - local sageLLM deployment)
+- sagellm-core engine_server (direct engine HTTP server)
 - OpenAI API (cloud - for comparison benchmarks)
 - vLLM OpenAI server
 - LMDeploy OpenAI server
@@ -16,6 +17,7 @@ Uses the official openai Python SDK.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -189,19 +191,111 @@ class GatewayClient(BenchmarkClient):
                 metrics=None,
             )
 
-    async def health_check(self) -> bool:
+    async def health_check(self, timeout: float = 5.0) -> bool:
         """Check if API is reachable.
 
+        Tries endpoints in priority order:
+        1. GET /health  (sagellm-core engine_server)
+        2. GET /v1/models  (standard OpenAI-compatible, e.g. vLLM)
+
+        Args:
+            timeout: Connection timeout in seconds.
+
         Returns:
-            True if /v1/models endpoint responds.
+            True if the server is reachable and ready.
         """
+        base = self.base_url.rstrip("/")
+        # Strip /v1 suffix to get server root
+        root = base[:-3] if base.endswith("/v1") else base
+
         try:
-            models = await self.client.models.list()
-            logger.info(f"OpenAI health check OK ({len(list(models.data))} models available)")
+            import httpx
+        except ImportError:
+            # Fall back to OpenAI SDK /v1/models probe
+            return await self._health_check_openai_sdk()
+
+        # 1. Try /health first (sagellm engine_server style)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as http:
+                r = await http.get(f"{root}/health")
+            if r.status_code < 500:
+                logger.info(f"Health check OK via /health (HTTP {r.status_code})")
+                return True
+        except Exception as e:
+            logger.debug(f"/health probe failed: {e}")
+
+        # 2. Try /v1/models (standard OpenAI-compatible)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as http:
+                r = await http.get(f"{base}/models")
+            if r.status_code < 500:
+                logger.info(f"Health check OK via /v1/models (HTTP {r.status_code})")
+                return True
+        except Exception as e:
+            logger.debug(f"/v1/models probe failed: {e}")
+
+        logger.error("All health check probes failed — server may not be ready")
+        return False
+
+    async def _health_check_openai_sdk(self) -> bool:
+        """Fallback health check using the OpenAI SDK models.list()."""
+        try:
+            models = await asyncio.wait_for(self.client.models.list(), timeout=10.0)
+            logger.info(f"Health check OK ({len(list(models.data))} models available)")
             return True
         except Exception as e:
-            logger.error(f"OpenAI health check failed: {e}")
+            logger.error(f"SDK health check failed: {e}")
             return False
+
+    async def discover_model(self, timeout: float = 5.0) -> str | None:
+        """Discover the model name loaded by the server.
+
+        Queries /info (sagellm engine_server) or /v1/models.
+        Returns the first model name found, or None.
+
+        Args:
+            timeout: Connection timeout in seconds.
+
+        Returns:
+            Model name string, or None if undetectable.
+        """
+        base = self.base_url.rstrip("/")
+        root = base[:-3] if base.endswith("/v1") else base
+
+        try:
+            import httpx
+        except ImportError:
+            return None
+
+        # Try /info first (sagellm engine_server exposes model_path here)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as http:
+                r = await http.get(f"{root}/info")
+            if r.status_code == 200:
+                data = r.json()
+                model = data.get("model_path") or data.get("model") or data.get("model_name")
+                if model:
+                    logger.info(f"Discovered model from /info: {model}")
+                    return str(model)
+        except Exception as e:
+            logger.debug(f"/info probe failed: {e}")
+
+        # Try /v1/models
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as http:
+                r = await http.get(f"{base}/models")
+            if r.status_code == 200:
+                data = r.json()
+                models = data.get("data", [])
+                if models:
+                    model = models[0].get("id")
+                    if model:
+                        logger.info(f"Discovered model from /v1/models: {model}")
+                        return str(model)
+        except Exception as e:
+            logger.debug(f"/v1/models model discovery failed: {e}")
+
+        return None
 
     async def close(self) -> None:
         """Close HTTP client."""

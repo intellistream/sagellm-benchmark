@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isagellm-benchmark"
-version = "0.4.0.5"
+version = "0.5.1.6"
 description = "Benchmark Suite & E2E Testing for sageLLM"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,16 +20,20 @@ classifiers = [
 
 dependencies = [
     # Core sagellm dependencies
-    "isagellm-protocol>=0.4.0.0,<0.5.0",
-    "isagellm-core>=0.4.0.0,<0.5.0",        # Engine creation and execution
-    "isagellm-backend>=0.4.0.1,<0.5.0",     # Backend providers (CPU/CUDA/etc)
+    "isagellm-protocol>=0.5.1.0,<0.6.0",
+    "isagellm-core>=0.5.1.0,<0.6.0",     # Engine creation and execution
+    "isagellm-backend>=0.5.1.0,<0.6.0",  # Backend providers (CPU/CUDA/etc)
     # CLI dependencies
     "click>=8.0.0",
     "rich>=13.0.0",
     # Dataset loading
-    "datasets>=2.14.0",                      # HuggingFace datasets for ShareGPT
+    "datasets>=2.14.0", # HuggingFace datasets for ShareGPT
     # Data validation (optional, for schema validation)
     "jsonschema>=4.0.0",
+    # Standard API client for OpenAI-compatible benchmarking
+    "openai>=1.0.0",
+    # Hugging Face dataset upload
+    "huggingface_hub>=0.24.0",
 ]
 
 [project.optional-dependencies]
@@ -37,21 +41,12 @@ dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-asyncio>=0.21.0",
-    "mypy>=1.0.0",
     "ruff>=0.1.0",
-]
-# Optional client dependencies
-openai-client = ["openai>=1.0.0"]
-vllm-client = ["vllm>=0.2.0", "openai>=1.0.0"]
-lmdeploy-client = ["lmdeploy>=0.2.0", "httpx>=0.24.0"]
-sagellm-client = ["isagellm-backend>=0.3.0.3"]
-# All clients
-all-clients = [
-    "openai>=1.0.0",
+    # Heavy optional backends for benchmarking
     "vllm>=0.2.0",
     "lmdeploy>=0.2.0",
     "httpx>=0.24.0",
-    "isagellm-backend>=0.3.0.3",
+    "isage-pypi-publisher>=0.2.0",
 ]
 
 [project.scripts]
@@ -72,13 +67,6 @@ target-version = "py310"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]
-
-[tool.mypy]
-python_version = "3.10"
-strict = true
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

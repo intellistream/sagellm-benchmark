@@ -26,6 +26,7 @@ class BenchmarkConfig:
         output_dir: Directory for results (default: ./benchmark_results).
         verbose: Enable verbose logging.
         dataset: Optional dataset for sampling real prompts.
+        mode: Benchmark mode ('batch' or 'traffic').
     """
 
     engine: Any  # BaseEngine instance
@@ -33,6 +34,7 @@ class BenchmarkConfig:
     output_dir: Path = Path("./benchmark_results")
     verbose: bool = False
     dataset: Any = None  # Optional BenchmarkDataset instance
+    mode: str = "traffic"  # 'batch' or 'traffic'
 
 
 class BenchmarkRunner:
@@ -77,7 +79,7 @@ class BenchmarkRunner:
             reporter = JSONReporter()
             reporter.generate(aggregated_metrics, output_path=str(output_file))
             logger.info(f"Saved metrics to {output_file}")
-            
+
             # Export to leaderboard format
             self._export_leaderboard_entry(workload.name, aggregated_metrics)
 
@@ -110,6 +112,7 @@ class BenchmarkRunner:
         # Get prompts from dataset if available
         if self.config.dataset is not None:
             from sagellm_benchmark.types import WorkloadSpec
+
             spec = WorkloadSpec(
                 name=workload.name,
                 workload_type=workload.workload_type,
@@ -185,12 +188,36 @@ class BenchmarkRunner:
         Returns:
             BenchmarkResult instance.
         """
+        # 提取 metrics（Metrics.timestamps 由 llm_engine 直接填充，无需二次注入）
+        metrics = response.metrics if hasattr(response, "metrics") else None
+
+        # 提取 output_tokens 数量
+        output_tokens_count = 0
+        if hasattr(response, "output_tokens") and response.output_tokens:
+            raw = response.output_tokens
+            output_tokens_count = len(raw) if isinstance(raw, list) else int(raw)
+
+        # 提取 prompt_tokens（llm_engine 目前不填该字段，暂时留 0）
+        prompt_tokens = 0
+        if hasattr(response, "prompt_tokens") and response.prompt_tokens is not None:
+            prompt_tokens = int(response.prompt_tokens)
+
+        # 从 metrics.timestamps 计算 e2e 延迟（ms）
+        e2e_latency_ms = 0.0
+        if metrics is not None and metrics.timestamps is not None:
+            ts = metrics.timestamps
+            if ts.queued_at > 0 and ts.completed_at > 0:
+                e2e_latency_ms = (ts.completed_at - ts.queued_at) * 1000.0
+
         return BenchmarkResult(
             request_id=response.request_id,
             success=not hasattr(response, "error") or response.error is None,
             error=response.error if hasattr(response, "error") else None,
-            metrics=response.metrics if hasattr(response, "metrics") else None,
+            metrics=metrics,
             output_text=response.output_text if hasattr(response, "output_text") else "",
+            output_tokens=output_tokens_count,
+            prompt_tokens=prompt_tokens,
+            e2e_latency_ms=e2e_latency_ms,
         )
 
     def _save_summary(self) -> None:
@@ -221,28 +248,27 @@ class BenchmarkRunner:
         summary_file = self.config.output_dir / "benchmark_summary.json"
         summary_file.write_text(json.dumps(summary, indent=2))
         logger.info(f"Saved summary to {summary_file}")
-    
-    def _export_leaderboard_entry(
-        self, workload_name: str, metrics: AggregatedMetrics
-    ) -> None:
+
+    def _export_leaderboard_entry(self, workload_name: str, metrics: AggregatedMetrics) -> None:
         """Export results to leaderboard format.
-        
+
         Args:
             workload_name: Name of the workload
             metrics: Aggregated metrics
         """
         from sagellm_benchmark.exporters import LeaderboardExporter
-        
+
         # Load config.json
         config_file = self.config.output_dir / "config.json"
         if not config_file.exists():
             logger.warning("config.json not found, skipping leaderboard export")
             return
-        
+
         import json
+
         with open(config_file) as f:
             config = json.load(f)
-        
+
         # Export to leaderboard format
         output_file = self.config.output_dir / f"{workload_name}_leaderboard.json"
         try:

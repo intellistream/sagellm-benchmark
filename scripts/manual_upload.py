@@ -36,7 +36,7 @@ from pathlib import Path
 # 配置
 # =============================================================================
 
-HF_REPO = "wangyao36/sagellm-benchmark-results"
+HF_REPO = "intellistream/sagellm-benchmark-results"
 HF_BRANCH = "main"
 # 支持 HF 镜像站（中国用户可设置 HF_ENDPOINT=https://hf-mirror.com）
 HF_ENDPOINT = os.environ.get("HF_ENDPOINT", "https://huggingface.co")

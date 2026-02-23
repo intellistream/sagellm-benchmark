@@ -92,8 +92,17 @@ class TableReporter:
         throughput_table.add_column("Metric", style="cyan")
         throughput_table.add_column("Value", style="magenta")
 
-        throughput_table.add_row("Avg Throughput", f"{metrics.avg_throughput_tps:.2f} tokens/s")
+        # 对标 vLLM/SGLang 的新增吞吐量指标
+        throughput_table.add_row("Request Throughput", f"{metrics.request_throughput_rps:.2f} req/s")
+        throughput_table.add_row(
+            "Input Throughput", f"{metrics.input_throughput_tps:.2f} tokens/s"
+        )
+        throughput_table.add_row(
+            "Output Throughput", f"{metrics.output_throughput_tps:.2f} tokens/s"
+        )
         throughput_table.add_row("Total Throughput", f"{metrics.total_throughput_tps:.2f} tokens/s")
+        # 保持现有指标
+        throughput_table.add_row("Avg Throughput", f"{metrics.avg_throughput_tps:.2f} tokens/s")
 
         console.print(throughput_table)
         console.print()
@@ -160,8 +169,11 @@ class TableReporter:
         print(f"Avg TPOT: {metrics.avg_tpot_ms:.2f} ms")
 
         print("\n=== Throughput ===")
-        print(f"Avg Throughput: {metrics.avg_throughput_tps:.2f} tokens/s")
+        print(f"Request Throughput: {metrics.request_throughput_rps:.2f} req/s")
+        print(f"Input Throughput: {metrics.input_throughput_tps:.2f} tokens/s")
+        print(f"Output Throughput: {metrics.output_throughput_tps:.2f} tokens/s")
         print(f"Total Throughput: {metrics.total_throughput_tps:.2f} tokens/s")
+        print(f"Avg Throughput: {metrics.avg_throughput_tps:.2f} tokens/s")
 
         print("\n=== Memory & KV Cache ===")
         print(f"Peak Memory: {metrics.peak_mem_mb} MB")

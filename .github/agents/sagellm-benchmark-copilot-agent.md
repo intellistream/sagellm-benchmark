@@ -35,16 +35,36 @@
 - 行长度：100 字符
 - Linter：ruff
 
-## 📝 CHANGELOG 更新规则（强制）
+## � 文档规范（强制）
 
-**🚨 每次推送前必须更新 CHANGELOG.md！**
+**🚨 禁止创建总结性文档！**
 
-### 更新 CHANGELOG 的时机
+### 文档创建规则
 
-- ✅ **必须** 在每次 `git push` 前更新 CHANGELOG.md
+- ❌ **禁止** 创建总结性文档（如 INTEGRATION.md、SUMMARY.md、QUICK_REFERENCE.md）
+- ❌ **禁止** 为单次修改创建专门的总结文档
+- ✅ **必须** 将改动简短记录到 CHANGELOG.md
+- ✅ **必须** 将重要的架构/设计文档放在 docs/ 目录（如必要）
+- ✅ **可以** 更新 README.md 说明主要功能变化
+
+### 原因
+
+- 总结性文档容易过时且难以维护
+- CHANGELOG 已经提供了改动历史
+- 应将精力投入到代码质量和测试，而非重复文档
+
+## 📝 CHANGELOG 与自动发布规则（强制）
+
+**🚨 每次解决 issue 必须更新 CHANGELOG！每次 commit 自动触发发布！**
+
+### 更新规则
+
+- ✅ **必须** 每次解决一个 issue 时更新 `CHANGELOG.md`
 - ✅ **必须** 在 `[Unreleased]` 部分添加本次改动
 - ✅ **必须** 使用正确的分类（Added/Changed/Fixed/Removed）
-- ✅ **必须** 在版本发布时，将 `[Unreleased]` 改为版本号和日期
+- ✅ **每次** `git push` 到 `main-dev` 通过 pre-push hook 自动触发 PyPI 发布
+- ✅ **自动发布** 会同步更新版本号并生成 release tag
+- ✅ **发布时** `[Unreleased]` 自动替换为版本号与日期
 
 ### CHANGELOG 格式
 
@@ -69,21 +89,21 @@
 ### 示例工作流
 
 ```bash
-# 1. 修改代码
+# 1. 解决 issue 并修改代码
 vim src/sagellm_benchmark/some_file.py
 
 # 2. 更新 CHANGELOG.md（强制！）
 vim CHANGELOG.md
 # 在 [Unreleased] 部分添加：
-# ### Added
-# - 新增 XXX 功能
+# ### Fixed
+# - 修复 issue #123 的问题
 
-# 3. 提交
+# 3. 提交改动
 git add .
-git commit -m "feat: add XXX feature"
+git commit -m "fix: resolve issue #123"
 
-# 4. 推送（pre-push hook 会检查 CHANGELOG）
-git push
+# 4. 推送到 main-dev（自动触发 PyPI 发布）
+git push origin main-dev  # pre-push hook 自动发布
 ```
 
 ## 📦 PyPI 发布流程
@@ -274,17 +294,17 @@ gh issue create \
 - 主文档仓库：https://github.com/intellistream/sagellm-docs
 - Protocol 规范：`docs/specs/protocol_v0.1.md`（见 sagellm-docs）
 
-## 🛠️ GitHub Issue 管理（sage-dev gh）
+## 🛠️ GitHub Issue 管理（sagellm-dev gh）
 
-**从 v0.2.0 开始，所有 GitHub CLI 命令已集成到 `sage-dev` 工具。**
+**从 v0.2.0 开始，所有 GitHub CLI 命令已集成到 `sagellm-dev` 工具。**
 
-使用 `sage-dev gh` 子命令来管理 GitHub issues，无需直接使用 gh 命令。
+使用 `sagellm-dev gh` 子命令来管理 GitHub issues，无需直接使用 gh 命令。
 
 ### 常用命令
 
 ```bash
 # ⚠️ 创建新 issue（当前有 bug，建议暂时使用 gh CLI）
-# Bug: sage-dev gh create 会报错但实际创建成功，导致重复 issue
+# Bug: sagellm-dev gh create 会报错但实际创建成功，导致重复 issue
 # 临时方案：使用 gh issue create
 gh issue create \
   --title "[Category] 描述" \
@@ -292,27 +312,27 @@ gh issue create \
   --body "详细描述"
 
 # 未来修复后的用法：
-# sage-dev gh create sagellm-core \
+# sagellm-dev gh create sagellm-core \
 #   --title "[Feature] 新功能" \
 #   --label enhancement \
 #   --assignee username
 
 # 查看仓库的所有开放 issues
-sage-dev gh list sagellm-{repo_name}
+sagellm-dev gh list sagellm-{repo_name}
 
 # 为单个 issue 分配给用户
-sage-dev gh assign sagellm-{repo_name} <issue_number> <username>
+sagellm-dev gh assign sagellm-{repo_name} <issue_number> <username>
 
 # 批量分配 issues 给同一用户
-sage-dev gh assign-batch sagellm-{repo_name} <username> <issues...>
+sagellm-dev gh assign-batch sagellm-{repo_name} <username> <issues...>
 
 # 查看单个 issue 的详细信息
-sage-dev gh view sagellm-{repo_name} <issue_number>
+sagellm-dev gh view sagellm-{repo_name} <issue_number>
 ```
 
 ### 详细说明
 
-详见 `sagellm` 仓库的 copilot-instructions 中的 "GitHub Issue 管理（sage-dev gh）" 部分。
+详见 `sagellm` 仓库的 copilot-instructions 中的 "GitHub Issue 管理（sagellm-dev gh）" 部分。
 
 ### ⚠️ 注意事项
 
