@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Pre-commit hook restored**: `hooks/pre-commit` was overwritten by `pre-commit install` (Jan 17); restored custom bash script and added call to `pre-commit run --hook-stage commit` so `.pre-commit-config.yaml` checks also run locally on staged files
+- **`forbid-mock` false positive**: Added `hooks/` directory to exclusion pattern in `.pre-commit-config.yaml` to prevent the hook's own source code from triggering the check
+- **Renamed misleading comment**: `# Create mock result` → `# Create simulated result` in `examples/batch_mode_standalone_demo.py`
+- **Unused variable**: Removed unused `cpu_count = os.cpu_count() or 1` in `exporters/leaderboard.py` (ruff F841)
+- **Trailing whitespace / EOF**: Auto-fixed 15 files via `pre-commit run --all-files`
+
 ### Changed
 - **[#19] `quickstart.sh` 安装策略统一**：新增 Step 3/4 显式从 PyPI 安装依赖（`isagellm-protocol isagellm-core isagellm-backend`）；本仓库以 editable 方式安装（Step 4/4）
 

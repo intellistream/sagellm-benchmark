@@ -481,11 +481,12 @@ async def test_traffic_controller_batch_mode():
 
     assert len(results) == 5
     assert all(r.success for r in results)
-    
+
     # 验证 batch 模式下所有结果都有 _batch_total_time_s 属性
-    assert all(hasattr(r, '_batch_total_time_s') for r in results), \
+    assert all(hasattr(r, "_batch_total_time_s") for r in results), (
         "BATCH mode should add _batch_total_time_s to results"
-    
+    )
+
     # 验证总时长是合理的（应该 > 0）
     total_time = results[0]._batch_total_time_s
     assert total_time > 0, "Batch total time should be positive"
@@ -508,14 +509,14 @@ async def test_traffic_controller_batch_with_warmup():
     # 前 3 个是 warmup，应该返回剩余 7 个结果
     assert len(results) == 7
     assert all(r.success for r in results)
-    
+
     # 验证返回的是后 7 个请求
     expected_ids = [f"req-{i}" for i in range(3, 10)]
     actual_ids = [r.request_id for r in results]
     assert actual_ids == expected_ids
-    
+
     # 验证 batch 统计
-    assert all(hasattr(r, '_batch_total_time_s') for r in results)
+    assert all(hasattr(r, "_batch_total_time_s") for r in results)
 
 
 @pytest.mark.asyncio
@@ -526,7 +527,7 @@ async def test_traffic_profile_batch_mode():
         enable_batch_mode=True,
         warmup_requests=5,
     )
-    
+
     assert profile.pattern == ArrivalPattern.BATCH
     assert profile.enable_batch_mode is True
     assert profile.warmup_requests == 5

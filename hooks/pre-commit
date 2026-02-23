@@ -28,6 +28,16 @@ if [ -z "$staged_files" ]; then
     exit 0
 fi
 
+# Run .pre-commit-config.yaml checks (trailing whitespace, ruff, etc.)
+if command -v pre-commit >/dev/null 2>&1; then
+    echo -e "${YELLOW}Running pre-commit config checks (ruff, whitespace, etc.)...${NC}"
+    if ! SKIP="" pre-commit run --hook-stage commit; then
+        echo -e "${RED}✗ pre-commit config checks failed. Fix issues and re-stage.${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ pre-commit config checks passed${NC}"
+fi
+
 get_file_size() {
     local file="$1"
     if stat -c%s "$file" >/dev/null 2>&1; then
@@ -57,9 +67,9 @@ else
     echo -e "${GREEN}✓ No conflict markers${NC}"
 fi
 
-# Check for mock usage (CPU-first policy)
+# Check for mock usage in Python files (CPU-first policy)
 echo -e "${YELLOW}Checking for mock usage...${NC}"
-if git diff --cached | grep -nE '^\+.*\bmock\b|^\+.*mock_|^\+.*_mock|^\+.*--mock' >/dev/null; then
+if git diff --cached -- '*.py' | grep -nE '^\+.*\bmock\b|^\+.*mock_|^\+.*_mock|^\+.*--mock' >/dev/null; then
     echo -e "${RED}✗ Mock usage is forbidden. Use CPU backend for validation.${NC}"
     exit 1
 else

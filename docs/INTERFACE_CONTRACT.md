@@ -91,33 +91,33 @@ class AggregatedMetrics:
     p50_ttft_ms: float
     p95_ttft_ms: float
     p99_ttft_ms: float
-    
+
     avg_tbt_ms: float
     avg_tpot_ms: float
-    
+
     # 吞吐
     avg_throughput_tps: float
     total_throughput_tps: float  # 总吞吐
-    
+
     # 错误率
     total_requests: int
     successful_requests: int
     failed_requests: int
     error_rate: float
-    
+
     # 内存（取 max）
     peak_mem_mb: int
-    
+
     # KV Cache（取 sum/avg）
     total_kv_used_tokens: int
     total_kv_used_bytes: int
     avg_prefix_hit_rate: float
     total_evict_count: int
     total_evict_ms: float
-    
+
     # Speculative（取 avg）
     avg_spec_accept_rate: float
-    
+
     # 时间
     total_time_s: float
     start_time: float

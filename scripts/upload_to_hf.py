@@ -59,10 +59,10 @@ def main() -> None:
     # 配置 HF endpoint（默认使用官方地址）
     hf_endpoint = os.environ.get("HF_ENDPOINT", "https://huggingface.co")
     print(f"📡 Using HF endpoint: {hf_endpoint}")
-    
+
     # 设置环境变量（huggingface_hub 会读取）
     os.environ["HF_ENDPOINT"] = hf_endpoint
-    
+
     # 初始化 API（使用配置的 endpoint）
     api = HfApi(endpoint=hf_endpoint, token=token)
 

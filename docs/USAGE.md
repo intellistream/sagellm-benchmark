@@ -488,7 +488,7 @@ python benchmarks/throughput.py \
 
 1. **Use similar hardware:** GPU type, memory, CPU cores
 2. **Use same model:** Ensure identical model and quantization
-3. **Match workload parameters:** 
+3. **Match workload parameters:**
    - Similar prompt lengths
    - Similar output lengths  
    - Same number of requests

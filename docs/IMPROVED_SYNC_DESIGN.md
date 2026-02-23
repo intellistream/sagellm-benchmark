@@ -63,7 +63,7 @@ huggingface:
   token: hf_xxxxxxxxxxxxxxxxxxxxx
   repo: wangyao36/sagellm-benchmark-results
   auto_upload: true  # 默认自动上传
-  
+
 local:
   keep_outputs: false  # 上传后删除本地文件（可选）
   outputs_dir: ~/sagellm-benchmark-outputs
@@ -80,24 +80,24 @@ local:
 @click.option("--auto-upload/--no-auto-upload", default=None)  # 可覆盖配置
 def run(model: str, backend: str, auto_upload: bool | None):
     """运行 benchmark"""
-    
+
     # 1. 运行 benchmark
     results = run_benchmark(model, backend)
-    
+
     # 2. 保存本地结果
     save_results(results)
-    
+
     # 3. 读取配置
     config = load_config()
     should_upload = auto_upload if auto_upload is not None else config.get("huggingface.auto_upload", True)
-    
+
     # 4. 自动上传到 HF
     if should_upload:
         try:
             print("\n📤 自动上传到 Hugging Face...")
             upload_to_huggingface(results, config)
             print("✅ 上传成功！")
-            
+
             # 5. 可选：清理本地文件
             if not config.get("local.keep_outputs", False):
                 cleanup_local_outputs()
@@ -114,24 +114,24 @@ def run(model: str, backend: str, auto_upload: bool | None):
 
 def upload_to_huggingface(results: dict, config: dict) -> None:
     """自动聚合并上传到 HF"""
-    
+
     # 1. 登录 HF
     token = config["huggingface"]["token"]
     repo = config["huggingface"]["repo"]
     login(token=token)
-    
+
     api = HfApi()
-    
+
     # 2. 下载现有数据
     existing_single = download_from_hf(repo, "leaderboard_single.json")
     existing_multi = download_from_hf(repo, "leaderboard_multi.json")
-    
+
     # 3. 合并数据（智能去重）
     new_results = [results]  # 当前运行的结果
     merged_single, merged_multi = merge_with_existing(
         existing_single, existing_multi, new_results
     )
-    
+
     # 4. 上传
     upload_leaderboard(api, repo, "leaderboard_single.json", merged_single)
     upload_leaderboard(api, repo, "leaderboard_multi.json", merged_multi)
@@ -151,7 +151,7 @@ Running benchmark...
 ✅ Benchmark completed!
   - TTFT: 45.2ms
   - Throughput: 80.0 tps
-  
+
 📤 自动上传到 Hugging Face...
   ✓ 下载现有数据 (12 条记录)
   ✓ 合并新结果 (新增 1 条)
@@ -230,7 +230,7 @@ Running benchmark...
 def run(model: str, backend: str):
     # 1. 运行 benchmark
     results = run_benchmark(model, backend)
-    
+
     # 2. 自动提交到后台服务
     try:
         submit_to_backend(results)
@@ -241,7 +241,7 @@ def run(model: str, backend: str):
 def submit_to_backend(results: dict) -> None:
     """提交到后台服务"""
     url = "https://sagellm-api.sage.org.ai/benchmark/submit"
-    
+
     # 匿名提交（或可选：附带用户 ID）
     response = requests.post(url, json=results, timeout=10)
     response.raise_for_status()
@@ -432,21 +432,21 @@ $ data = load_dataset("wangyao36/sagellm-benchmark-results")
 jobs:
   upload-to-hf:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       # ... (聚合和上传步骤)
-      
+
       - name: Clean up outputs directory
         run: |
           # 上传成功后，删除 outputs/ 保持仓库轻量
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           # 删除已上传的文件
           git rm -rf outputs/
           git commit -m "chore: cleanup outputs after HF upload [skip ci]" || true
@@ -589,16 +589,16 @@ $ git push
 def upload_with_conflict_resolution():
     # 1. 读取用户提交的数据
     user_data = load_json("hf_data/leaderboard_single.json")
-    
+
     # 2. 从 HF 拉取最新数据（可能已被其他用户更新）
     latest_hf_data = download_from_hf("leaderboard_single.json")
-    
+
     # 3. 三方合并（智能去重）
     merged_data = smart_merge(
         base=latest_hf_data,      # HF 最新版本（权威）
         incoming=user_data         # 用户提交的数据
     )
-    
+
     # 4. 上传合并后的结果
     upload_to_hf(merged_data)
 ```
@@ -661,33 +661,33 @@ on:
 jobs:
   upload-to-hf:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      
+
       - name: Install dependencies
         run: pip install huggingface_hub
-      
+
       # 关键步骤：并发安全合并
       - name: Merge with latest HF data (conflict resolution)
         env:
           HF_REPO: wangyao36/sagellm-benchmark-results
         run: |
           python scripts/merge_and_upload.py
-      
+
       - name: Upload to Hugging Face
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO: wangyao36/sagellm-benchmark-results
         run: |
           python scripts/upload_to_hf.py
-      
+
       # 可选：上传成功后清理
       - name: Cleanup hf_data (keep repo clean)
         run: |
@@ -734,7 +734,7 @@ def get_config_key(entry: dict) -> str:
     hw = entry.get("hardware", {})
     model = entry.get("model", {})
     workload = entry.get("workload", {})
-    
+
     return "|".join([
         hw.get("chip_model", "unknown"),
         str(hw.get("chip_count", 1)),
@@ -753,26 +753,26 @@ def is_better_result(new: dict, old: dict) -> bool:
 def smart_merge(hf_latest: list[dict], user_data: list[dict]) -> list[dict]:
     """
     三方智能合并
-    
+
     规则：
     1. HF 最新数据为基准（权威）
     2. 用户数据追加或更新
     3. 相同配置时，选择性能更好的
     """
     merged = {}
-    
+
     # 先加入 HF 最新数据（权威）
     for entry in hf_latest:
         key = get_config_key(entry)
         merged[key] = entry
-    
+
     # 合并用户数据
     added = 0
     updated = 0
-    
+
     for entry in user_data:
         key = get_config_key(entry)
-        
+
         if key not in merged:
             merged[key] = entry
             added += 1
@@ -782,30 +782,30 @@ def smart_merge(hf_latest: list[dict], user_data: list[dict]) -> list[dict]:
                 merged[key] = entry
                 updated += 1
                 print(f"  ↑ 更新: {key[:60]}")
-    
+
     print(f"\n📊 合并结果: 新增 {added}, 更新 {updated}, 总计 {len(merged)}")
     return list(merged.values())
 
 def main():
     print("🔀 并发安全合并...")
-    
+
     # 1. 读取用户提交的数据
     hf_data_dir = Path("hf_data")
     user_single = json.loads((hf_data_dir / "leaderboard_single.json").read_text())
     user_multi = json.loads((hf_data_dir / "leaderboard_multi.json").read_text())
-    
+
     # 2. 从 HF 下载最新数据（可能已被其他用户更新）
     print("\n📥 从 HF 下载最新数据...")
     hf_single = download_from_hf("leaderboard_single.json")
     hf_multi = download_from_hf("leaderboard_multi.json")
     print(f"  ✓ Single: {len(hf_single)} 条")
     print(f"  ✓ Multi: {len(hf_multi)} 条")
-    
+
     # 3. 智能合并
     print("\n🔀 合并数据...")
     merged_single = smart_merge(hf_single, user_single)
     merged_multi = smart_merge(hf_multi, user_multi)
-    
+
     # 4. 保存合并结果（覆盖 hf_data/）
     (hf_data_dir / "leaderboard_single.json").write_text(
         json.dumps(merged_single, indent=2, ensure_ascii=False)
@@ -813,7 +813,7 @@ def main():
     (hf_data_dir / "leaderboard_multi.json").write_text(
         json.dumps(merged_multi, indent=2, ensure_ascii=False)
     )
-    
+
     print("\n✅ 合并完成！准备上传...")
 
 if __name__ == "__main__":
@@ -828,29 +828,29 @@ if __name__ == "__main__":
 @click.command()
 def aggregate():
     """聚合本地结果并准备上传"""
-    
+
     # 1. 从 HF 下载最新数据（公开，无需 token）
     print("📥 从 Hugging Face 下载最新数据...")
     hf_single = download_from_hf("leaderboard_single.json")
     hf_multi = download_from_hf("leaderboard_multi.json")
-    
+
     # 2. 扫描本地 outputs/
     print("\n📂 扫描本地结果...")
     local_results = scan_outputs_dir()
-    
+
     # 3. 合并
     print("\n🔀 合并数据...")
     merged_single, merged_multi = merge_results(
         hf_single, hf_multi, local_results
     )
-    
+
     # 4. 保存到 hf_data/
     hf_data_dir = Path("hf_data")
     hf_data_dir.mkdir(exist_ok=True)
-    
+
     save_json(hf_data_dir / "leaderboard_single.json", merged_single)
     save_json(hf_data_dir / "leaderboard_multi.json", merged_multi)
-    
+
     print("\n✅ 聚合完成！")
     print(f"  📄 hf_data/leaderboard_single.json ({len(merged_single)} 条)")
     print(f"  📄 hf_data/leaderboard_multi.json ({len(merged_multi)} 条)")

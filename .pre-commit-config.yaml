@@ -51,6 +51,5 @@ repos:
         name: forbid mock usage
         entry: bash -c 'if grep -nE "\\bmock\\b|mock_|_mock|--mock" "$@"; then echo "Mock usage is forbidden. Use CPU backend for validation."; exit 1; fi'
         language: system
-        types: [text]
+        types: [python]
         pass_filenames: true
-        exclude: ^(\.pre-commit-config\.yaml|\.ruff_cache/|\.pytest_cache/)

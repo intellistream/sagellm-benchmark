@@ -82,9 +82,6 @@ class LeaderboardExporter:
             except OSError:
                 pass
 
-        # CPU core count
-        cpu_count = os.cpu_count() or 1
-
         # Default to CPU
         hardware = {
             "vendor": cpu_vendor,

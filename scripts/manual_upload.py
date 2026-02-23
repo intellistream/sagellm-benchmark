@@ -283,12 +283,12 @@ def main():
     print("\n" + "-" * 70)
     print("Step 2: 加载本地数据")
     print("-" * 70)
-    
+
     # 优先使用 hf_data/（如果已经运行过 aggregate）
     if HF_DATA_DIR.exists():
         single_file = HF_DATA_DIR / "leaderboard_single.json"
         multi_file = HF_DATA_DIR / "leaderboard_multi.json"
-        
+
         if single_file.exists() and multi_file.exists():
             print("  ✓ 发现 hf_data/ 目录（优先使用）")
             with open(single_file, encoding="utf-8") as f:
