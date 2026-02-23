@@ -37,16 +37,64 @@ class LeaderboardExporter:
         Returns:
             Dictionary with hardware fields
         """
+        # Detect CPU model and vendor
+        cpu_model = platform.processor() or "unknown"
+        if not cpu_model or cpu_model == "unknown":
+            # platform.processor() is often empty on Linux; fall back to /proc/cpuinfo
+            try:
+                with open("/proc/cpuinfo") as f:
+                    for line in f:
+                        if line.startswith("model name"):
+                            cpu_model = line.split(":", 1)[1].strip()
+                            break
+            except OSError:
+                pass
+            if not cpu_model or cpu_model == "unknown":
+                cpu_model = platform.machine() or "CPU"
+
+        # Detect CPU vendor from model string
+        cpu_vendor = "Unknown"
+        cpu_lower = cpu_model.lower()
+        if "intel" in cpu_lower:
+            cpu_vendor = "Intel"
+        elif "amd" in cpu_lower or "ryzen" in cpu_lower or "epyc" in cpu_lower:
+            cpu_vendor = "AMD"
+        elif "apple" in cpu_lower or "m1" in cpu_lower or "m2" in cpu_lower or "m3" in cpu_lower:
+            cpu_vendor = "Apple"
+        elif "arm" in cpu_lower or "aarch" in cpu_lower:
+            cpu_vendor = "ARM"
+
+        # Detect system memory
+        total_memory_gb = 0.0
+        try:
+            import psutil
+
+            total_memory_gb = round(psutil.virtual_memory().total / (1024**3), 2)
+        except ImportError:
+            # Fallback: parse /proc/meminfo on Linux
+            try:
+                with open("/proc/meminfo") as f:
+                    for line in f:
+                        if line.startswith("MemTotal:"):
+                            kb = int(line.split()[1])
+                            total_memory_gb = round(kb / (1024**2), 2)
+                            break
+            except OSError:
+                pass
+
+        # CPU core count
+        cpu_count = os.cpu_count() or 1
+
         # Default to CPU
         hardware = {
-            "vendor": "Intel",  # Default, can be detected
-            "chip_model": "CPU",
+            "vendor": cpu_vendor,
+            "chip_model": cpu_model,
             "chip_count": 1,
             "interconnect": "None",  # Required by schema
             "chips_per_node": 1,  # Added for clarity
             "intra_node_interconnect": "None",  # Match example format
-            "memory_per_chip_gb": None,
-            "total_memory_gb": None,
+            "memory_per_chip_gb": total_memory_gb,  # For CPU, system memory
+            "total_memory_gb": total_memory_gb,
         }
 
         # Try to detect GPU if available
@@ -116,10 +164,10 @@ class LeaderboardExporter:
         env = {
             "os": f"{platform.system()} {platform.release()}",
             "python_version": platform.python_version(),
-            "pytorch_version": None,
-            "cuda_version": None,
-            "cann_version": None,
-            "driver_version": None,
+            "pytorch_version": "",
+            "cuda_version": "",
+            "cann_version": "",
+            "driver_version": "",
         }
 
         # Detect PyTorch version

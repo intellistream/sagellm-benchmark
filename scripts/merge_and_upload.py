@@ -154,6 +154,24 @@ def is_better_result(new_entry: dict, existing_entry: dict) -> bool:
     return False
 
 
+def sanitize_entry(entry: dict) -> dict:
+    """确保所有字段类型一致，避免 HF Arrow schema 冲突（null vs double/string）"""
+    hw = entry.get("hardware", {})
+    env = entry.get("environment", {})
+
+    # float 字段：null -> 0.0
+    for key in ("memory_per_chip_gb", "total_memory_gb"):
+        if hw.get(key) is None:
+            hw[key] = 0.0
+
+    # str 字段：null -> ""
+    for key in ("cuda_version", "driver_version", "cann_version", "pytorch_version"):
+        if env.get(key) is None:
+            env[key] = ""
+
+    return entry
+
+
 def smart_merge(hf_latest: list[dict], user_data: list[dict]) -> list[dict]:
     """
     三方智能合并
@@ -171,7 +189,7 @@ def smart_merge(hf_latest: list[dict], user_data: list[dict]) -> list[dict]:
     # 先加入 HF 最新数据（权威版本）
     for entry in hf_latest:
         config_key = get_config_key(entry)
-        merged[config_key] = entry
+        merged[config_key] = sanitize_entry(entry)
 
     added = 0
     updated = 0
@@ -179,6 +197,7 @@ def smart_merge(hf_latest: list[dict], user_data: list[dict]) -> list[dict]:
 
     # 合并用户数据
     for entry in user_data:
+        entry = sanitize_entry(entry)
         config_key = get_config_key(entry)
 
         if config_key not in merged:
