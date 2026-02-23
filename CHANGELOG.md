@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **[#19] `quickstart.sh` 安装策略统一**：新增 Step 3/4 显式从 PyPI 安装依赖（`isagellm-protocol isagellm-core isagellm-backend`）；本仓库以 editable 方式安装（Step 4/4）
+
+
+
 ### Added
 - `workloads.py`: 新增 TPCH/TPCC 风格 query workloads（`Q1`~`Q8`）
   - 新增 `WorkloadType.QUERY`
