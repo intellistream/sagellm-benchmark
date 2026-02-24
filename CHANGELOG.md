@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **chore: standardize pre-commit hooks** — migrate all checks to `.pre-commit-config.yaml`; replace `hooks/pre-commit` with delegation stub; `./quickstart.sh` and `pre-commit install` are now equivalent
 
 ### Fixed
+- **UP042 ruff violations**: Replace `class Foo(str, Enum)` with `class Foo(StrEnum)` in `traffic.py`, `types.py`, `workloads.py` to satisfy ruff UP042 rule
+- **Pre-commit config `--exit-non-zero-on-fix` loophole**: Removed `--exit-non-zero-on-fix` from ruff hook args; this flag only failed the hook when auto-fixes were applied, allowing unfixable violations (like UP042) to slip through silently on re-commit
 - **Pre-commit hook restored**: `hooks/pre-commit` was overwritten by `pre-commit install` (Jan 17); restored custom bash script and added call to `pre-commit run --hook-stage commit` so `.pre-commit-config.yaml` checks also run locally on staged files
 - **`forbid-mock` false positive**: Added `hooks/` directory to exclusion pattern in `.pre-commit-config.yaml` to prevent the hook's own source code from triggering the check
 - **Renamed misleading comment**: `# Create mock result` → `# Create simulated result` in `examples/batch_mode_standalone_demo.py`

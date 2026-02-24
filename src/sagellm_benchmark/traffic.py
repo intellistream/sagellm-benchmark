@@ -16,7 +16,7 @@ import logging
 import random
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ArrivalPattern(str, Enum):
+class ArrivalPattern(StrEnum):
     """请求到达模式枚举.
 
     Attributes:
