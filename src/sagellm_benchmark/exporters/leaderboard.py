@@ -7,7 +7,7 @@ import os
 import platform
 import subprocess
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -345,7 +345,7 @@ class LeaderboardExporter:
                 "prefix_cache_enabled": True,
             },
             "metadata": {
-                "submitted_at": datetime.now(timezone.utc).isoformat(),
+                "submitted_at": datetime.now(UTC).isoformat(),
                 "submitter": "sagellm-benchmark automated run",
                 "data_source": "automated-benchmark",
                 "reproducible_cmd": f"sagellm-benchmark run --workload {config.get('workload')} --backend {config.get('backend')} --model {config.get('model')}",
