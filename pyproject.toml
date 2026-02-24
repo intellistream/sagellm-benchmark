@@ -7,14 +7,13 @@ name = "isagellm-benchmark"
 dynamic = ["version"]
 description = "Benchmark Suite & E2E Testing for sageLLM"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "Private" }
 authors = [{ name = "IntelliStream Team", email = "shuhao_zhang@hust.edu.cn" }]
 keywords = ["llm", "inference", "benchmark", "testing", "domestic-hardware"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
 ]
 
@@ -37,15 +36,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Local development dependencies (NOT used in CI — vllm/lmdeploy are too large)
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-asyncio>=0.21.0",
     "ruff>=0.1.0",
-    # Heavy optional backends for benchmarking
+    "httpx>=0.24.0",
+    # Heavy optional backends (only install locally, not in CI)
     "vllm>=0.2.0",
     "lmdeploy>=0.2.0",
-    "httpx>=0.24.0",
     "isage-pypi-publisher>=0.2.0",
 ]
 
@@ -65,7 +65,7 @@ version = {attr = "sagellm_benchmark._version.__version__"}
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
