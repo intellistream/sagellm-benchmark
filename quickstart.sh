@@ -23,11 +23,8 @@ if [ -n "$CONDA_DEFAULT_ENV" ] || [ -n "$VIRTUAL_ENV" ]; then
 else
     echo -e "${RED}  ❌ 未检测到虚拟环境，开发必须先创建并激活环境${NC}"
     echo -e "${YELLOW}  👉 推荐（Conda）：${NC}"
-    echo -e "     conda create -n sagellm python=3.11"
-    echo -e "     conda activate sagellm"
-    echo -e "${YELLOW}  👉 或使用 venv：${NC}"
-    echo -e "     python -m venv .venv"
-    echo -e "     source .venv/bin/activate"
+    echo -e "     conda create -n sage python=3.11"
+    echo -e "     conda activate sage"
     echo ""
     exit 1
 fi
