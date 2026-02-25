@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - CI coverage gate adjusted to match current validated baseline (`--cov-fail-under=45`) and unblock non-regression pipeline failures.
+- CI install recovery: lowered internal dependency minimums to published baselines (`protocol/core/backend >= 0.5.2.0/0.5.2.0/0.5.2.13`) to avoid `No matching distribution found` during `pip install -e .`.
 
 ### Changed
 - **chore: standardize pre-commit hooks** — migrate all checks to `.pre-commit-config.yaml`; replace `hooks/pre-commit` with delegation stub; `./quickstart.sh` and `pre-commit install` are now equivalent
