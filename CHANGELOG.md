@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Issue #3: 新增 CI 回归能力补齐项：`src/sagellm_benchmark/baseline.py`、`src/sagellm_benchmark/regression.py`、`.github/workflows/benchmark.yml` 与 `benchmark_baselines/` 目录。
+- `scripts/compare_performance_baseline.py` 支持 `--expected-change`（可重复）用于标记预期性能变化，不计入回归失败。
+- 新增 `tests/test_baseline_regression.py` 覆盖 baseline 持久化、回归判定与 allowlist 报告渲染。
+
 ### Fixed
 - CI coverage gate adjusted to match current validated baseline (`--cov-fail-under=45`) and unblock non-regression pipeline failures.
 - CI install recovery: lowered internal dependency minimums to published baselines (`protocol/core/backend >= 0.5.2.0/0.5.2.0/0.5.2.13`) to avoid `No matching distribution found` during `pip install -e .`.

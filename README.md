@@ -136,6 +136,12 @@ pytest tests/
 
 ### Performance Regression Check (CI)
 
+- Workflow: `.github/workflows/benchmark.yml`
+- Baseline directory: `benchmark_baselines/`
+- PR: runs lightweight E2E benchmark and comments regression report on PR
+- Release: runs fuller benchmark matrix and enforces regression thresholds
+- Manual baseline refresh: trigger workflow with `update_baseline=true`
+
 ```bash
 # Generate current perf snapshot
 sagellm-benchmark perf \
@@ -148,7 +154,7 @@ sagellm-benchmark perf \
 
 # Compare current snapshot with baseline
 python scripts/compare_performance_baseline.py \
-   --baseline benchmarks/baselines/perf_baseline_e2e.json \
+   --baseline benchmark_baselines/perf_baseline_e2e.json \
    --current benchmark_results/perf_current.json \
    --warning-threshold 5 \
    --critical-threshold 10 \
