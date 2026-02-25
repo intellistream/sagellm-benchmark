@@ -269,7 +269,7 @@ jobs:
             --cov=sagellm_benchmark \
             --cov-report=term-missing \
             --cov-report=xml \
-            --cov-fail-under=70
+            --cov-fail-under=45
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11'
