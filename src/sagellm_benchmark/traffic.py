@@ -16,7 +16,7 @@ import logging
 import random
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ArrivalPattern(str, Enum):
+class ArrivalPattern(StrEnum):
     """请求到达模式枚举.
 
     Attributes:
@@ -267,24 +267,24 @@ class TrafficController:
             return []
 
         logger.info(f"Starting actual test phase: {len(all_requests)} requests")
-        
+
         # Batch 模式：记录总耗时
         if self.profile.pattern == ArrivalPattern.BATCH or self.profile.enable_batch_mode:
             import time
+
             start_time = time.perf_counter()
             results = await self._run_requests(all_requests, is_warmup=False)
             end_time = time.perf_counter()
             total_time_s = end_time - start_time
-            
+
             # 为每个结果添加总耗时信息（用于后续聚合指标计算）
             # 注意：这里的 e2e_latency_ms 在 BATCH 模式下表示总时长，不是单个请求的延迟
             for result in results:
-                if not hasattr(result, '_batch_total_time_s'):
+                if not hasattr(result, "_batch_total_time_s"):
                     result._batch_total_time_s = total_time_s
-            
+
             logger.info(
-                f"Batch test completed: {len(results)} results, "
-                f"total_time={total_time_s:.3f}s"
+                f"Batch test completed: {len(results)} results, total_time={total_time_s:.3f}s"
             )
         else:
             results = await self._run_requests(all_requests, is_warmup=False)

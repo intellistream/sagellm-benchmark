@@ -23,11 +23,8 @@ if [ -n "$CONDA_DEFAULT_ENV" ] || [ -n "$VIRTUAL_ENV" ]; then
 else
     echo -e "${RED}  ❌ 未检测到虚拟环境，开发必须先创建并激活环境${NC}"
     echo -e "${YELLOW}  👉 推荐（Conda）：${NC}"
-    echo -e "     conda create -n sagellm python=3.11"
-    echo -e "     conda activate sagellm"
-    echo -e "${YELLOW}  👉 或使用 venv：${NC}"
-    echo -e "     python -m venv .venv"
-    echo -e "     source .venv/bin/activate"
+    echo -e "     conda create -n sage python=3.11"
+    echo -e "     conda activate sage"
     echo ""
     exit 1
 fi
@@ -40,7 +37,7 @@ PROJECT_ROOT="$SCRIPT_DIR"
 echo -e "${BLUE}📂 Project root: ${NC}$PROJECT_ROOT"
 echo ""
 
-echo -e "${YELLOW}${BOLD}Step 1/3: Installing Git Hooks${NC}"
+echo -e "${YELLOW}${BOLD}Step 1/4: Installing Git Hooks${NC}"
 
 HOOKS_DIR="$PROJECT_ROOT/.git/hooks"
 TEMPLATE_DIR="$PROJECT_ROOT/hooks"
@@ -74,7 +71,7 @@ fi
 
 echo ""
 
-echo -e "${YELLOW}${BOLD}Step 2/3: Checking Python${NC}"
+echo -e "${YELLOW}${BOLD}Step 2/4: Checking Python${NC}"
 if ! command -v python3 &> /dev/null; then
     echo -e "${RED}✗ Python3 not found${NC}"
     exit 1
@@ -89,7 +86,14 @@ echo -e "${GREEN}✓ Python $PYTHON_VERSION${NC}"
 
 echo ""
 
-echo -e "${YELLOW}${BOLD}Step 3/3: Install package (editable)${NC}"
+echo -e "${YELLOW}${BOLD}Step 3/4: Install PyPI dependencies${NC}"
+echo -e "${BLUE}📦 Installing sagellm dependencies from PyPI (latest)...${NC}"
+# 依赖仓库从 PyPI 安装最新版本，不使用本地路径
+pip install isagellm-protocol isagellm-core isagellm-backend --quiet
+echo -e "${GREEN}✓ PyPI dependencies installed${NC}"
+
+echo ""
+echo -e "${YELLOW}${BOLD}Step 4/4: Install package (editable)${NC}"
 echo -e "${BLUE}📦 Installing isagellm-benchmark...${NC}"
 pip install -e ".[dev]" --quiet 2>/dev/null || pip install -e . --quiet
 

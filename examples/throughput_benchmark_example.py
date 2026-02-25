@@ -35,7 +35,7 @@ async def run_batch_mode_example():
         max_model_len=1024,
         max_new_tokens=128,
     )
-    
+
     engine = LLMEngine(config)
     await engine.start()
 
@@ -55,7 +55,7 @@ async def run_batch_mode_example():
     print("\n" + "=" * 80)
     print("Batch 模式结果（vLLM/SGLang 兼容格式）")
     print("=" * 80)
-    
+
     for workload_name, metrics in results.items():
         print(f"\n{workload_name}:")
         print(f"  Request Throughput:  {metrics.request_throughput_rps:>8.2f} req/s")
@@ -85,7 +85,7 @@ async def run_traffic_mode_example():
         max_model_len=1024,
         max_new_tokens=128,
     )
-    
+
     engine = LLMEngine(config)
     await engine.start()
 
@@ -105,7 +105,7 @@ async def run_traffic_mode_example():
     print("\n" + "=" * 80)
     print("Traffic 模式结果（vLLM/SGLang 兼容格式）")
     print("=" * 80)
-    
+
     for workload_name, metrics in results.items():
         print(f"\n{workload_name}:")
         print(f"  Request Throughput:  {metrics.request_throughput_rps:>8.2f} req/s")
@@ -146,7 +146,7 @@ def export_for_comparison(results_path: Path):
         if metrics_file.exists():
             with open(metrics_file) as f:
                 metrics = json.load(f)
-                
+
             comparison_data["workloads"][workload_name] = {
                 "request_throughput_rps": metrics.get("request_throughput_rps", 0),
                 "input_throughput_tps": metrics.get("input_throughput_tps", 0),

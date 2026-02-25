@@ -93,10 +93,10 @@ class TableReporter:
         throughput_table.add_column("Value", style="magenta")
 
         # 对标 vLLM/SGLang 的新增吞吐量指标
-        throughput_table.add_row("Request Throughput", f"{metrics.request_throughput_rps:.2f} req/s")
         throughput_table.add_row(
-            "Input Throughput", f"{metrics.input_throughput_tps:.2f} tokens/s"
+            "Request Throughput", f"{metrics.request_throughput_rps:.2f} req/s"
         )
+        throughput_table.add_row("Input Throughput", f"{metrics.input_throughput_tps:.2f} tokens/s")
         throughput_table.add_row(
             "Output Throughput", f"{metrics.output_throughput_tps:.2f} tokens/s"
         )

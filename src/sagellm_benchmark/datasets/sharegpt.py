@@ -196,7 +196,7 @@ class ShareGPTDataset(BenchmarkDataset):
         # 转换为列表
         data = list(ms_dataset)
         logger.info(f"Loaded {len(data)} conversations from ModelScope")
-        
+
         return cls(data, seed=seed, min_prompt_len=min_prompt_len, max_prompt_len=max_prompt_len)
 
     def _extract_prompts(self, data: list[dict[str, Any]]) -> list[str]:

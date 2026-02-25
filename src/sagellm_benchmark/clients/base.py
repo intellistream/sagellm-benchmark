@@ -147,7 +147,7 @@ class BenchmarkClient(ABC):
             # Add timeout wrapper
             result = await asyncio.wait_for(self.generate(request), timeout=self.timeout)
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Request {request.request_id} timed out after {self.timeout}s")
             # Import here to avoid circular dependency
             from sagellm_benchmark.types import BenchmarkResult

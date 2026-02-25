@@ -88,22 +88,22 @@ async def demo_batch_mode() -> None:
     if results and hasattr(results[0], '_batch_total_time_s'):
         total_time = results[0]._batch_total_time_s
         logger.info(f"\nTotal execution time: {total_time:.3f}s")
-        
+
         # Calculate throughput metrics (similar to vLLM/SGLang)
         total_input_tokens = sum(r.prompt_tokens for r in results if r.prompt_tokens > 0)
         total_output_tokens = sum(r.output_tokens for r in results if r.output_tokens > 0)
-        
+
         request_throughput = len(results) / total_time
         input_throughput = total_input_tokens / total_time if total_input_tokens > 0 else 0
         output_throughput = total_output_tokens / total_time if total_output_tokens > 0 else 0
         total_throughput = (total_input_tokens + total_output_tokens) / total_time
-        
+
         logger.info("\nThroughput Metrics:")
         logger.info(f"  Request throughput: {request_throughput:.2f} req/s")
         logger.info(f"  Input throughput:   {input_throughput:.2f} tokens/s")
         logger.info(f"  Output throughput:  {output_throughput:.2f} tokens/s")
         logger.info(f"  Total throughput:   {total_throughput:.2f} tokens/s")
-        
+
         logger.info("\nToken Statistics:")
         logger.info(f"  Total input tokens:  {total_input_tokens}")
         logger.info(f"  Total output tokens: {total_output_tokens}")
@@ -144,12 +144,12 @@ async def demo_batch_vs_traffic_mode() -> None:
         enable_batch_mode=True,
     )
     controller_batch = TrafficController(client_batch, profile_batch)
-    
+
     import time
     start = time.perf_counter()
     results_batch = await controller_batch.run(requests.copy())
     batch_time = time.perf_counter() - start
-    
+
     logger.info(f"BATCH mode: {len(results_batch)} requests in {batch_time:.3f}s")
     logger.info(f"  Throughput: {len(results_batch) / batch_time:.2f} req/s")
 
@@ -160,11 +160,11 @@ async def demo_batch_vs_traffic_mode() -> None:
         pattern=ArrivalPattern.INSTANT,
     )
     controller_instant = TrafficController(client_instant, profile_instant)
-    
+
     start = time.perf_counter()
     results_instant = await controller_instant.run(requests.copy())
     instant_time = time.perf_counter() - start
-    
+
     logger.info(f"INSTANT mode: {len(results_instant)} requests in {instant_time:.3f}s")
     logger.info(f"  Throughput: {len(results_instant) / instant_time:.2f} req/s")
 
@@ -176,11 +176,11 @@ async def demo_batch_vs_traffic_mode() -> None:
         request_rate=5.0,  # 5 requests per second
     )
     controller_fixed = TrafficController(client_fixed, profile_fixed)
-    
+
     start = time.perf_counter()
     results_fixed = await controller_fixed.run(requests.copy())
     fixed_time = time.perf_counter() - start
-    
+
     logger.info(f"FIXED mode (5 QPS): {len(results_fixed)} requests in {fixed_time:.3f}s")
     logger.info(f"  Throughput: {len(results_fixed) / fixed_time:.2f} req/s")
 

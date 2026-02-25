@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class WorkloadType(str, Enum):
+class WorkloadType(StrEnum):
     """Workload types for benchmarking."""
 
     QUERY = "query"  # TPCH/TPCC-style query workload
@@ -16,7 +16,7 @@ class WorkloadType(str, Enum):
     STRESS = "stress"  # Concurrent requests, pressure test
 
 
-class WorkloadQuery(str, Enum):
+class WorkloadQuery(StrEnum):
     """Query-style workload identifiers."""
 
     Q1 = "Q1"

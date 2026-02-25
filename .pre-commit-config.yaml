@@ -1,14 +1,14 @@
 # Pre-commit hooks configuration for sagellm-benchmark
 # See https://pre-commit.com for more information
 #
-# Installation:
+# Installation (canonical):
 #   pip install pre-commit
-#   pre-commit install
+#   pre-commit install           ← this is the ONLY correct setup command
+#   (./quickstart.sh also runs pre-commit install internally)
 #
 # Usage:
 #   pre-commit run --all-files              # Run on all files
 #   pre-commit run --files src/             # Run on specific files
-#   git commit --no-verify                  # Skip hooks temporarily
 
 default_language_version:
   python: python3.11
@@ -32,14 +32,17 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: detect-private-key
+      - id: no-commit-to-branch
+        name: block commits to main
+        args: [--branch, main]
 
   # Python: Ruff linter and formatter
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.14
+    rev: v0.15.2
     hooks:
       - id: ruff
         name: ruff check
-        args: [--fix, --exit-non-zero-on-fix]
+        args: [--fix]
         files: ^(src/|tests/).*\.py$
       - id: ruff-format
         name: ruff format
@@ -48,9 +51,15 @@ repos:
   - repo: local
     hooks:
       - id: forbid-mock
-        name: forbid mock usage
+        name: forbid mock usage (CPU-first policy)
         entry: bash -c 'if grep -nE "\\bmock\\b|mock_|_mock|--mock" "$@"; then echo "Mock usage is forbidden. Use CPU backend for validation."; exit 1; fi'
         language: system
-        types: [text]
+        types: [python]
         pass_filenames: true
-        exclude: ^(\.pre-commit-config\.yaml|\.ruff_cache/|\.pytest_cache/)
+
+      - id: no-requirements-txt
+        name: forbid requirements.txt (use pyproject.toml)
+        entry: bash -c 'echo "requirements.txt is forbidden. Declare dependencies in pyproject.toml instead."; exit 1'
+        language: system
+        files: requirements.*\.txt$
+        pass_filenames: false

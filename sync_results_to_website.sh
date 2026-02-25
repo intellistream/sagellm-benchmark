@@ -52,18 +52,18 @@ echo "$leaderboard_files" | while IFS= read -r file; do
         model=$(echo "$file" | cut -d'/' -f3)
         run_id=$(echo "$file" | cut -d'/' -f4)
         filename=$(basename "$file")
-        
+
         # Create destination directory
         dest_dir="$results_dir/${backend}/${model}"
         mkdir -p "$dest_dir"
-        
+
         # Copy file with run_id prefix
         dest_file="$dest_dir/${run_id}_${filename}"
         cp "$file" "$dest_file"
-        
+
         echo "  ✓ $file"
         echo "    → $dest_file"
-        
+
         copied_count=$((copied_count + 1))
     fi
 done

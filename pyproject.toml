@@ -4,25 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isagellm-benchmark"
-version = "0.5.1.6"
+dynamic = ["version"]
 description = "Benchmark Suite & E2E Testing for sageLLM"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "Private" }
 authors = [{ name = "IntelliStream Team", email = "shuhao_zhang@hust.edu.cn" }]
 keywords = ["llm", "inference", "benchmark", "testing", "domestic-hardware"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
 ]
 
 dependencies = [
     # Core sagellm dependencies
-    "isagellm-protocol>=0.5.1.0,<0.6.0",
-    "isagellm-core>=0.5.1.0,<0.6.0",     # Engine creation and execution
-    "isagellm-backend>=0.5.1.0,<0.6.0",  # Backend providers (CPU/CUDA/etc)
+    "isagellm-protocol>=0.5.2.0,<0.6.0",
+    "isagellm-core>=0.5.2.0,<0.6.0",     # Engine creation and execution
+    "isagellm-backend>=0.5.2.13,<0.6.0",  # Backend providers (CPU/CUDA/etc)
     # CLI dependencies
     "click>=8.0.0",
     "rich>=13.0.0",
@@ -37,15 +36,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Local development dependencies (NOT used in CI — vllm/lmdeploy are too large)
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-asyncio>=0.21.0",
     "ruff>=0.1.0",
-    # Heavy optional backends for benchmarking
+    "httpx>=0.24.0",
+    # Heavy optional backends (only install locally, not in CI)
     "vllm>=0.2.0",
     "lmdeploy>=0.2.0",
-    "httpx>=0.24.0",
     "isage-pypi-publisher>=0.2.0",
 ]
 
@@ -60,9 +60,12 @@ Issues = "https://github.com/intellistream/sagellm-benchmark/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.dynamic]
+version = {attr = "sagellm_benchmark._version.__version__"}
+
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]

@@ -11,14 +11,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sagellm_protocol import Metrics
 
 
-class WorkloadType(str, Enum):
+class WorkloadType(StrEnum):
     """Workload 类型枚举。"""
 
     SHORT = "short"  # 短输入短输出
@@ -26,7 +26,7 @@ class WorkloadType(str, Enum):
     STRESS = "stress"  # 并发压力测试
 
 
-class ContractVersion(str, Enum):
+class ContractVersion(StrEnum):
     """Demo Contract 版本。"""
 
     YEAR1 = "year1"

@@ -384,6 +384,7 @@ def test_partial_itl_list() -> None:
     # E2EL 统计：[100.0, 80.0, 90.0] = 3 样本
     assert aggregated.avg_e2el_ms == pytest.approx(90.0, rel=0.01)
 
+
 # ==================== 新增：对标 vLLM/SGLang 吞吐量指标测试 ====================
 
 
@@ -603,6 +604,7 @@ def test_throughput_metrics_alignment() -> None:
     assert aggregated.output_throughput_tps > 0
     assert aggregated.total_throughput_tps > 0
 
+
 def test_throughput_fields_presence() -> None:
     """测试所有对标 vLLM/SGLang 的吞吐量字段是否存在。"""
     results = [
@@ -641,20 +643,19 @@ def test_throughput_fields_presence() -> None:
         "total_output_tokens",
         "avg_throughput_tps",
     ]
-    
+
     for field in required_fields:
         assert hasattr(aggregated, field), f"Missing field: {field}"
         value = getattr(aggregated, field)
         assert value is not None, f"Field {field} is None"
-        
+
     # 验证token统计
     assert aggregated.total_input_tokens == 200
     assert aggregated.total_output_tokens == 100
-    
+
     # 验证吞吐量计算正确
     total_time = 10.0  # completed_at - queued_at
     assert aggregated.request_throughput_rps == pytest.approx(1.0 / total_time, abs=0.01)
     assert aggregated.input_throughput_tps == pytest.approx(200 / total_time, abs=0.1)
     assert aggregated.output_throughput_tps == pytest.approx(100 / total_time, abs=0.1)
     assert aggregated.total_throughput_tps == pytest.approx(300 / total_time, abs=0.1)
-

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.request
 from pathlib import Path
 
@@ -83,12 +84,20 @@ def get_config_key(entry: dict) -> str:
     """
     生成配置唯一标识 key
 
-    相同配置 = 相同硬件 + 相同模型 + 相同 workload + 相同精度 + 相同版本
+    相同配置 = 相同硬件 + 相同模型 + 相同 workload 场景 + 相同精度 + 相同版本
     """
     hw = entry.get("hardware", {})
     model = entry.get("model", {})
-    workload = entry.get("workload", {})
     cluster = entry.get("cluster")
+    metadata = entry.get("metadata", {})
+
+    # 提取 workload 场景名 (e.g. 'Benchmark run: Q1' -> 'Q1')
+    notes = metadata.get("notes", "")
+    workload_name = "default"
+    if notes:
+        m = re.search(r"\b(Q\d+|M\d+|year\d+|stress|short|long|all)\b", notes, re.IGNORECASE)
+        if m:
+            workload_name = m.group(1).upper()
 
     # 构建配置 key
     parts = [
@@ -96,8 +105,7 @@ def get_config_key(entry: dict) -> str:
         str(hw.get("chip_count", 1)),
         model.get("name", "unknown"),
         model.get("precision", "FP16"),
-        str(workload.get("input_length", 0)),
-        str(workload.get("output_length", 0)),
+        workload_name,
         str(entry.get("sagellm_version") or entry.get("versions", {}).get("benchmark") or "unknown"),
     ]
 
@@ -146,6 +154,24 @@ def is_better_result(new_entry: dict, existing_entry: dict) -> bool:
     return False
 
 
+def sanitize_entry(entry: dict) -> dict:
+    """确保所有字段类型一致，避免 HF Arrow schema 冲突（null vs double/string）"""
+    hw = entry.get("hardware", {})
+    env = entry.get("environment", {})
+
+    # float 字段：null -> 0.0
+    for key in ("memory_per_chip_gb", "total_memory_gb"):
+        if hw.get(key) is None:
+            hw[key] = 0.0
+
+    # str 字段：null -> ""
+    for key in ("cuda_version", "driver_version", "cann_version", "pytorch_version"):
+        if env.get(key) is None:
+            env[key] = ""
+
+    return entry
+
+
 def smart_merge(hf_latest: list[dict], user_data: list[dict]) -> list[dict]:
     """
     三方智能合并
@@ -163,7 +189,7 @@ def smart_merge(hf_latest: list[dict], user_data: list[dict]) -> list[dict]:
     # 先加入 HF 最新数据（权威版本）
     for entry in hf_latest:
         config_key = get_config_key(entry)
-        merged[config_key] = entry
+        merged[config_key] = sanitize_entry(entry)
 
     added = 0
     updated = 0
@@ -171,6 +197,7 @@ def smart_merge(hf_latest: list[dict], user_data: list[dict]) -> list[dict]:
 
     # 合并用户数据
     for entry in user_data:
+        entry = sanitize_entry(entry)
         config_key = get_config_key(entry)
 
         if config_key not in merged:
@@ -210,12 +237,12 @@ def main():
     user_single_file = hf_data_dir / "leaderboard_single.json"
     user_multi_file = hf_data_dir / "leaderboard_multi.json"
 
-    if not user_single_file.exists() or not user_multi_file.exists():
-        print("  ⚠️ 缺少必要文件")
+    if not user_single_file.exists() and not user_multi_file.exists():
+        print("  ⚠️ 缺少所有必要文件（leaderboard_single.json 和 leaderboard_multi.json 均不存在）")
         exit(1)
 
-    user_single = json.loads(user_single_file.read_text(encoding="utf-8"))
-    user_multi = json.loads(user_multi_file.read_text(encoding="utf-8"))
+    user_single = json.loads(user_single_file.read_text(encoding="utf-8")) if user_single_file.exists() else []
+    user_multi = json.loads(user_multi_file.read_text(encoding="utf-8")) if user_multi_file.exists() else []
     print(f"  ✓ Single: {len(user_single)} 条")
     print(f"  ✓ Multi: {len(user_multi)} 条")
 

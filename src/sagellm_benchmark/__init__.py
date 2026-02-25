@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from sagellm_benchmark._version import __version__
+
 # Clients - Task B 客户端
 from sagellm_benchmark.clients import (
     BenchmarkClient,
@@ -25,8 +27,6 @@ from sagellm_benchmark.types import (
     WorkloadSpec,
     WorkloadType,
 )
-
-__version__ = "0.4.0.6"
 
 __all__ = [
     "__version__",

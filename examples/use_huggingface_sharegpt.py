@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 async def main() -> None:
     """使用 HuggingFace ShareGPT 数据集测试推理。"""
-    
+
     # 1. 加载 HuggingFace ShareGPT 数据集
     logger.info("Loading ShareGPT dataset from HuggingFace...")
     dataset = ShareGPTDataset.from_huggingface(
@@ -32,9 +32,9 @@ async def main() -> None:
         max_prompt_len=5000,
         seed=42,
     )
-    
+
     logger.info(f"Dataset loaded: {len(dataset)} prompts")
-    
+
     # 2. 定义 Workload 规格
     spec = WorkloadSpec(
         name="sharegpt_short",
@@ -44,19 +44,19 @@ async def main() -> None:
         num_requests=3,      # 采样 3 个请求
         kv_budget_tokens=None,
     )
-    
+
     # 3. 从数据集采样请求
     logger.info(f"Sampling {spec.num_requests} requests...")
     benchmark_requests = dataset.sample(spec)
-    
+
     for i, req in enumerate(benchmark_requests, 1):
         logger.info(f"Request {i} prompt preview: {req.prompt[:100]}...")
-    
+
     # 4. 创建引擎（使用 CPU）
     logger.info("Creating CPU engine...")
     backend_config = BackendConfig(kind="cpu", device="cpu")
     backend_provider = create_backend(backend_config)
-    
+
     engine_config = EngineConfig(
         kind="cpu",
         model="gpt2",
@@ -64,10 +64,10 @@ async def main() -> None:
         device="cpu",
     )
     engine = create_engine(engine_config, backend_provider)
-    
+
     await engine.start()
     logger.info("Engine started")
-    
+
     # 5. 执行推理
     logger.info("Running inference...")
     for i, bench_req in enumerate(benchmark_requests, 1):
@@ -81,17 +81,17 @@ async def main() -> None:
             temperature=None,
             stream=False,
         )
-        
+
         logger.info(f"\n{'='*60}")
         logger.info(f"Request {i}/{len(benchmark_requests)}")
         logger.info(f"Prompt length: {len(bench_req.prompt)} chars")
-        
+
         response = await engine.execute(request)
-        
+
         logger.info(f"TTFT: {response.metrics.ttft_ms:.2f} ms")
         logger.info(f"Throughput: {response.metrics.throughput_tps:.2f} tokens/s")
         logger.info(f"Output preview: {response.output_text[:200]}...")
-    
+
     # 6. 停止引擎
     await engine.stop()
     logger.info("\nBenchmark completed!")

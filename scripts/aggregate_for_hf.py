@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.request
 from pathlib import Path
 
@@ -106,12 +107,20 @@ def get_config_key(entry: dict) -> str:
     """
     生成配置唯一标识 key
 
-    相同配置 = 相同硬件 + 相同模型 + 相同 workload + 相同精度 + 相同版本
+    相同配置 = 相同硬件 + 相同模型 + 相同 workload 场景 + 相同精度 + 相同版本
     """
     hw = entry.get("hardware", {})
     model = entry.get("model", {})
-    workload = entry.get("workload", {})
     cluster = entry.get("cluster")
+    metadata = entry.get("metadata", {})
+
+    # 提取 workload 场景名 (e.g. 'Benchmark run: Q1' -> 'Q1')
+    notes = metadata.get("notes", "")
+    workload_name = "default"
+    if notes:
+        m = re.search(r"\b(Q\d+|M\d+|year\d+|stress|short|long|all)\b", notes, re.IGNORECASE)
+        if m:
+            workload_name = m.group(1).upper()
 
     # 构建配置 key
     parts = [
@@ -119,8 +128,7 @@ def get_config_key(entry: dict) -> str:
         str(hw.get("chip_count", 1)),
         model.get("name", "unknown"),
         model.get("precision", "FP16"),
-        str(workload.get("input_length", 0)),
-        str(workload.get("output_length", 0)),
+        workload_name,
         str(entry.get("sagellm_version") or entry.get("versions", {}).get("benchmark") or "unknown"),
     ]
 
@@ -169,6 +177,24 @@ def is_better_result(new_entry: dict, existing_entry: dict) -> bool:
     return False
 
 
+def sanitize_entry(entry: dict) -> dict:
+    """确保所有字段类型一致，避免 HF Arrow schema 冲突（null vs double/string）"""
+    hw = entry.get("hardware", {})
+    env = entry.get("environment", {})
+
+    # float 字段：null -> 0.0
+    for key in ("memory_per_chip_gb", "total_memory_gb"):
+        if hw.get(key) is None:
+            hw[key] = 0.0
+
+    # str 字段：null -> ""
+    for key in ("cuda_version", "driver_version", "cann_version", "pytorch_version"):
+        if env.get(key) is None:
+            env[key] = ""
+
+    return entry
+
+
 def merge_results(existing: list[dict], new_results: list[dict]) -> list[dict]:
     """
     合并现有数据和新数据
@@ -184,7 +210,7 @@ def merge_results(existing: list[dict], new_results: list[dict]) -> list[dict]:
     # 先加入现有数据
     for entry in existing:
         config_key = get_config_key(entry)
-        merged[config_key] = entry
+        merged[config_key] = sanitize_entry(entry)
 
     added = 0
     updated = 0
@@ -192,6 +218,7 @@ def merge_results(existing: list[dict], new_results: list[dict]) -> list[dict]:
 
     for entry in new_results:
         config_key = get_config_key(entry)
+        entry = sanitize_entry(entry)
 
         if config_key not in merged:
             # 新配置，直接添加
