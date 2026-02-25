@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **chore: standardize pre-commit hooks** — migrate all checks to `.pre-commit-config.yaml`; replace `hooks/pre-commit` with delegation stub; `./quickstart.sh` and `pre-commit install` are now equivalent
+- CI `version-check` 改为按 `.pre-commit-config.yaml` 动态安装 `ruff`，移除硬编码版本
+- CI 安装阶段增加 `pip cache purge || true`，缓解 `No space left on device` 导致的依赖安装失败
 
 ### Fixed
 - **UP042 ruff violations**: Replace `class Foo(str, Enum)` with `class Foo(StrEnum)` in `traffic.py`, `types.py`, `workloads.py` to satisfy ruff UP042 rule
