@@ -1,4 +1,4 @@
-"""Example: Run Year 1 benchmark on Ascend engine (MVP).
+"""Example: Run Q1-Q8 benchmark on Ascend engine (MVP).
 
 This demo shows how to configure and run benchmarks with the Ascend backend.
 Note: Real hardware execution is not required for MVP (CPU fallback available).
@@ -28,7 +28,8 @@ async def main():
     """Run benchmark example with Ascend engine."""
     from sagellm_core.llm_engine import LLMEngine, LLMEngineConfig
 
-    from sagellm_benchmark import run_year1_benchmark
+    from sagellm_benchmark.runner import BenchmarkConfig, BenchmarkRunner
+    from sagellm_benchmark.workloads import TPCH_WORKLOADS
 
     # Create LLMEngine config for Ascend
     config = LLMEngineConfig(
@@ -59,11 +60,15 @@ async def main():
     print(f"   Model: {config.model_path}")
     print()
 
-    # Run benchmark
-    results = await run_year1_benchmark(
+    # Run benchmark with Q1-Q8 workloads
+    bench_config = BenchmarkConfig(
         engine=engine,
+        workloads=TPCH_WORKLOADS,
         output_dir=Path("./benchmark_results_ascend"),
+        verbose=True,
     )
+    runner = BenchmarkRunner(bench_config)
+    results = await runner.run()
 
     # Print summary
     print("\n" + "=" * 60)

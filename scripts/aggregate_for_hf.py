@@ -129,7 +129,9 @@ def get_config_key(entry: dict) -> str:
         model.get("name", "unknown"),
         model.get("precision", "FP16"),
         workload_name,
-        str(entry.get("sagellm_version") or entry.get("versions", {}).get("benchmark") or "unknown"),
+        str(
+            entry.get("sagellm_version") or entry.get("versions", {}).get("benchmark") or "unknown"
+        ),
     ]
 
     # 如果是多节点，加入节点信息

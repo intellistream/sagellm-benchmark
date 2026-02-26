@@ -5,13 +5,14 @@
 运行方式：
     HF_TOKEN=hf_xxx python scripts/upload_to_hf.py
 """
+
 from __future__ import annotations
 
 import os
 from datetime import datetime
 from pathlib import Path
 
-from huggingface_hub import HfApi, login
+from huggingface_hub import HfApi
 
 # 配置
 HF_REPO = "intellistream/sagellm-benchmark-results"
@@ -85,7 +86,7 @@ def main() -> None:
     print(f"\n📂 Uploading to: {HF_REPO}")
     upload_files(api, HF_REPO, files_to_upload)
 
-    print(f"\n✅ Upload complete!")
+    print("\n✅ Upload complete!")
     print(f"🔗 View at: https://huggingface.co/datasets/{HF_REPO}")
 
 

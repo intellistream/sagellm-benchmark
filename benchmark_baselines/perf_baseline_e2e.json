@@ -1,0 +1,11 @@
+{
+  "kind": "e2e",
+  "summary": {
+    "avg_ttft_ms": 50.0,
+    "avg_tbt_ms": 10.0,
+    "avg_throughput_tps": 100.0
+  },
+  "metadata": {
+    "source": "initial-ci-baseline"
+  }
+}

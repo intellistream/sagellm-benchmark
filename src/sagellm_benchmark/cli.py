@@ -214,16 +214,14 @@ def main() -> None:
             "Q6",
             "Q7",
             "Q8",
-            "m1",
-            "year1",
-            "short",
-            "long",
-            "stress",
+            "streaming",
+            "batch",
+            "mixed",
         ],
         case_sensitive=False,
     ),
     default="all",
-    help="Workload type to run.",
+    help="Workload type to run (Q1-Q8 query workloads, or 'all' for full suite).",
 )
 @click.option(
     "--backend",
@@ -1311,6 +1309,97 @@ def aggregate():
     except subprocess.CalledProcessError as e:
         console.print(f"[red]❌ 聚合失败: {e}[/red]")
         sys.exit(1)
+
+
+@main.command()
+@click.option(
+    "--results",
+    default="./benchmark_results",
+    show_default=True,
+    help="Directory containing JSON benchmark result files.",
+)
+@click.option(
+    "--output",
+    default="dashboard.html",
+    show_default=True,
+    help="Output HTML file path.",
+)
+@click.option(
+    "--title",
+    default="SageLLM Performance Leaderboard",
+    show_default=True,
+    help="Dashboard page title.",
+)
+@click.option(
+    "--sort-by",
+    default="throughput_tps",
+    type=click.Choice(["throughput_tps", "ttft_ms", "latency_p99_ms", "tbt_ms"]),
+    show_default=True,
+    help="Default sort column for ranking.",
+)
+def dashboard(results: str, output: str, title: str, sort_by: str) -> None:
+    """生成交互式 HTML 性能排行榜（Dashboard）.
+
+    从 benchmark_results/ 目录加载 JSON 结果，生成可排序的 HTML 排行榜页面，
+    支持按场景/数据集分 Tab 展示不同工作负载的性能排名。
+
+    示例:
+
+        sagellm-benchmark dashboard --results ./benchmark_results --output dashboard.html
+    """
+    from sagellm_benchmark.dashboard import RankingDashboard
+
+    db = RankingDashboard(results_dir=results)
+    db.load()
+
+    if not db._entries:
+        console.print(f"[yellow]⚠️  No results found in {results}[/yellow]")
+        console.print("[dim]Run 'sagellm-benchmark run' to generate results first.[/dim]")
+        return
+
+    db.generate(output_path=output, title=title, sort_by=sort_by)
+    n = len(db._entries)
+    console.print(f"[bold green]✅ Dashboard generated: {output}[/bold green]")
+    console.print(f"[green]   Entries: {n} result row(s)[/green]")
+    console.print(f"[dim]   Open {output} in a browser to view the leaderboard.[/dim]")
+
+
+@main.command("workload-template")
+@click.option(
+    "--output",
+    default="workloads_template.json",
+    show_default=True,
+    help="Output path for the template file (.json or .yaml/.yml).",
+)
+@click.option(
+    "--format",
+    "fmt",
+    default="json",
+    type=click.Choice(["json", "yaml"]),
+    show_default=True,
+    help="Template file format.",
+)
+def workload_template(output: str, fmt: str) -> None:
+    """生成工作负载配置模板文件 (YAML / JSON).
+
+    生成一个包含预设示例的模板文件，用户可基于此模板自定义 workload 配置，
+    然后通过 ``--workload-file`` 参数加载。
+
+    示例:
+
+        sagellm-benchmark workload-template --output my_workloads.yaml --format yaml
+
+        sagellm-benchmark run --workload-file my_workloads.yaml ...
+    """
+    from sagellm_benchmark.workloads import WorkloadTemplateGenerator
+
+    if fmt == "yaml":
+        WorkloadTemplateGenerator.generate_yaml(output)
+    else:
+        WorkloadTemplateGenerator.generate_json(output)
+
+    console.print(f"[bold green]✅ Workload template written to: {output}[/bold green]")
+    console.print("[dim]Edit the file and use --workload-file to load custom workloads.[/dim]")
 
 
 if __name__ == "__main__":

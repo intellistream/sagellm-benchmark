@@ -15,10 +15,20 @@ if TYPE_CHECKING:
     from sagellm_benchmark.types import AggregatedMetrics
 
 
-# Workload 映射表（根据 Year1 Demo Contract）
+# Workload 映射表（Q1-Q8 标准 workloads + legacy compat）
 WORKLOAD_SPECS = {
+    # Q1-Q8 current standard workloads
+    "Q1": {"input_length": 32, "output_length": 64},
+    "Q2": {"input_length": 512, "output_length": 128},
+    "Q3": {"input_length": 128, "output_length": 256},
+    "Q4": {"input_length": 256, "output_length": 256},
+    "Q5": {"input_length": 32, "output_length": 64},
+    "Q6": {"input_length": 512, "output_length": 256},
+    "Q7": {"input_length": 256, "output_length": 512},
+    "Q8": {"input_length": 192, "output_length": 128},
+    # Legacy (deprecated)
     "short_input": {"input_length": 128, "output_length": 128},
-    "long_input": {"input_length": 2048, "output_length": 512},  # Year1 Demo Contract
+    "long_input": {"input_length": 2048, "output_length": 512},
     "stress_test": {"input_length": 256, "output_length": 256},
 }
 

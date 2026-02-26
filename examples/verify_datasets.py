@@ -2,7 +2,7 @@
 """验收脚本 - 验证 Datasets 模块功能。
 
 按照 TASK_A_DATASETS.md 的交付验收用例：
-- 构造 Year1 workload
+- 构造 workload specs
 - 采样 5 条 request
 - 打印 request_id 与 prompt 长度
 """
@@ -23,9 +23,9 @@ def main() -> None:
     print("Datasets 模块验收测试")
     print("=" * 60)
 
-    # 1. 获取 Year1 workloads
+    # 1. 获取 workloads（使用 legacy helper，仅用于 dataset 采样测试）
     workloads = get_year1_workloads()
-    print(f"\n✅ Year1 Workloads 数量: {len(workloads)}")
+    print(f"\n✅ Workloads 数量: {len(workloads)}")
     for w in workloads:
         print(
             f"   - {w.name}: type={w.workload_type.value}, "

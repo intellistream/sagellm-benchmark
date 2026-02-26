@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Cleanup**: Removed all "year1"/`m1`/`short_input`/`long_input`/`stress_test` references from user-facing CLI, README, QUICKSTART, and examples; Q1-Q8 (`--workload all`) is now the canonical benchmark suite.
+- `run_benchmark.sh` confirmed to use `--workload all` (Q1-Q8); leaderboard exporter updated with Q1-Q8 workload spec mapping.
+- Legacy `YEAR1_WORKLOADS`/`M1_WORKLOADS` retained internally behind `DeprecationWarning` for backward compatibility only.
+
+### Added
+- **Issue #1**: Extended `WorkloadType` with `STREAMING`, `BATCH_INFERENCE`, `MIXED`; added `top_k`, `repetition_penalty`, `stream`, `warmup_rounds`, `concurrency` to `WorkloadConfig`; added predefined workload lists `STREAMING_WORKLOADS`, `BATCH_INFERENCE_WORKLOADS`, `MIXED_WORKLOADS`; extended `get_workloads_by_selector()` with new selectors.
+- **Issue #2**: New `HTMLReporter` (`reporters/html_reporter.py`) generating interactive Chart.js reports for single-run and multi-run comparison with latency/throughput/KV-cache charts.
+- **Issue #4**: New `MultiEngineRunner` (`clients/multi_engine.py`) with `EngineType` (StrEnum), `EngineInfo`, `EngineRunResult` for cross-backend performance comparison; exported from `clients/__init__.py`.
+- **Issue #8**: New `RankingDashboard` (`dashboard/ranking.py`) generating sortable HTML leaderboard with scenario tabs; added `dashboard` and `workload-template` CLI commands to `cli.py`.
+- **Issue #10**: New `tests/test_loopback.py` with `MinimalLoopbackClient` covering single request, sequential batch, concurrent batch, metrics aggregation, and large-batch CPU-first loopback tests.
+- **Issue #12**: `WorkloadLoader` (YAML/JSON config loading from file) and `WorkloadTemplateGenerator` (generate JSON/YAML template files) added to `workloads.py`.
+- **Issue #13**: Enhanced `.gitignore` with large file patterns (model weights, datasets, binaries); added `docs/REPO_SIZE_POLICY.md` defining repository size hygiene policy.
+- **Issue #22**: `MultiEngineRunner` auto-marks `EngineRunResult` as failed (`error` set) when all requests fail (`error_rate >= 1.0`), enabling reliable cross-engine failure detection.
+
+
+- `scripts/compare_performance_baseline.py` 支持 `--expected-change`（可重复）用于标记预期性能变化，不计入回归失败。
+- 新增 `tests/test_baseline_regression.py` 覆盖 baseline 持久化、回归判定与 allowlist 报告渲染。
+
 ### Fixed
 - CI coverage gate adjusted to match current validated baseline (`--cov-fail-under=45`) and unblock non-regression pipeline failures.
 - CI install recovery: lowered internal dependency minimums to published baselines (`protocol/core/backend >= 0.5.2.0/0.5.2.0/0.5.2.13`) to avoid `No matching distribution found` during `pip install -e .`.

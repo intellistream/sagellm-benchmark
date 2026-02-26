@@ -106,7 +106,9 @@ def get_config_key(entry: dict) -> str:
         model.get("name", "unknown"),
         model.get("precision", "FP16"),
         workload_name,
-        str(entry.get("sagellm_version") or entry.get("versions", {}).get("benchmark") or "unknown"),
+        str(
+            entry.get("sagellm_version") or entry.get("versions", {}).get("benchmark") or "unknown"
+        ),
     ]
 
     # 如果是多节点，加入节点信息
@@ -241,8 +243,14 @@ def main():
         print("  ⚠️ 缺少所有必要文件（leaderboard_single.json 和 leaderboard_multi.json 均不存在）")
         exit(1)
 
-    user_single = json.loads(user_single_file.read_text(encoding="utf-8")) if user_single_file.exists() else []
-    user_multi = json.loads(user_multi_file.read_text(encoding="utf-8")) if user_multi_file.exists() else []
+    user_single = (
+        json.loads(user_single_file.read_text(encoding="utf-8"))
+        if user_single_file.exists()
+        else []
+    )
+    user_multi = (
+        json.loads(user_multi_file.read_text(encoding="utf-8")) if user_multi_file.exists() else []
+    )
     print(f"  ✓ Single: {len(user_single)} 条")
     print(f"  ✓ Multi: {len(user_multi)} 条")
 

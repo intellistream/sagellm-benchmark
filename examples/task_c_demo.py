@@ -16,7 +16,7 @@ from sagellm_benchmark.types import BenchmarkResult, ContractVersion
 
 
 def create_sample_results() -> list[BenchmarkResult]:
-    """创建 5 个示例 BenchmarkResult（Year1 水平）。"""
+    """创建 5 个示例 BenchmarkResult（基线水平）。"""
     results = []
 
     for i in range(5):
@@ -81,14 +81,14 @@ def main() -> None:
     print(f"   - Error Rate: {aggregated.error_rate * 100:.2f}%")
     print()
 
-    # === 步骤 3: Year1 Contract 验证 ===
-    print("✅ Step 3: Year1 Contract 验证...")
-    year1_result = ContractVerifier.verify(aggregated, ContractVersion.YEAR1)
-    print(f"   {year1_result.summary}")
+    # === 步骤 3: Baseline Contract 验证 ===
+    print("✅ Step 3: Baseline Contract 验证...")
+    baseline_result = ContractVerifier.verify(aggregated, ContractVersion.YEAR1)
+    print(f"   {baseline_result.summary}")
 
-    for check_name, passed in year1_result.checks.items():
+    for check_name, passed in baseline_result.checks.items():
         status = "✅" if passed else "❌"
-        detail = year1_result.details.get(check_name, "")
+        detail = baseline_result.details.get(check_name, "")
         print(f"   {status} {check_name}: {detail}")
     print()
 
@@ -111,7 +111,7 @@ def main() -> None:
     json_path = output_dir / "task_c_demo.json"
     JSONReporter.generate(
         metrics=aggregated,
-        contract=year1_result,
+        contract=baseline_result,
         output_path=json_path,
         version="0.1.0.2",
         timestamp="2026-01-17T10:30:00",
@@ -124,7 +124,7 @@ def main() -> None:
     md_path = output_dir / "task_c_demo.md"
     MarkdownReporter.generate(
         metrics=aggregated,
-        contract=year1_result,
+        contract=baseline_result,
         output_path=md_path,
         title="Task C Demo - Benchmark Report",
         version="0.1.0.2",
@@ -137,7 +137,7 @@ def main() -> None:
     print("-" * 80)
     TableReporter.generate(
         metrics=aggregated,
-        contract=year1_result,
+        contract=baseline_result,
         show_contract=True,
     )
 

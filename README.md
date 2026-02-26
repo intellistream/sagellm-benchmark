@@ -17,7 +17,7 @@ New here? See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide.
 
 ## Features
 
-- End-to-end workload execution (short, long, stress)
+- End-to-end Q1-Q8 query workloads covering diverse LLM scenarios
 - Standardized JSON metrics and reports
 - One-command benchmark runner
 - Extensible backend support
@@ -51,8 +51,11 @@ pip install isagellm-benchmark[openai-client]
 ## Quick Start
 
 ```bash
-# Run all workloads (Short, Long, Stress) uses CPU backend by default
-sagellm-benchmark run --workload m1 --backend cpu --output ./benchmark_results
+# Run all Q1-Q8 workloads with CPU backend
+sagellm-benchmark run --workload all --backend cpu --output ./benchmark_results
+
+# Run a single query workload
+sagellm-benchmark run --workload Q1 --backend cpu
 
 # Generate a markdown report
 sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format markdown
@@ -68,14 +71,14 @@ sagellm-benchmark perf --type e2e --plot --plot-format png --plot-format pdf --t
 CLI examples:
 
 ```bash
-# Run the full suite with the CPU backend
-sagellm-benchmark run --workload m1 --backend cpu
+# Run the full Q1-Q8 suite with the CPU backend
+sagellm-benchmark run --workload all --backend cpu
 
 # Run with a CPU model
-sagellm-benchmark run --workload m1 --backend cpu --model sshleifer/tiny-gpt2
+sagellm-benchmark run --workload all --backend cpu --model sshleifer/tiny-gpt2
 
-# Run a single workload
-sagellm-benchmark run --workload short --backend cpu
+# Run a single query workload
+sagellm-benchmark run --workload Q3 --backend cpu
 
 # Generate reports
 sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format markdown
@@ -89,10 +92,14 @@ sagellm-benchmark report --input ./benchmark_results/perf_results.json --plot --
 
 ## Workloads
 
-- **m1** (Year 1 Demo): Full suite of predefined workloads (Short + Long + Stress)
-- **short**: 128 prompt → 128 output (5 requests)
-- **long**: 200 prompt → 200 output (3 requests)
-- **stress**: 256 prompt → 256 output (10 concurrent requests)
+- **Q1**: Short Q&A — 32 prompt → 64 output (5 requests)
+- **Q2**: Long context summarization — 512 prompt → 128 output (3 requests)
+- **Q3**: Code generation — 128 prompt → 256 output (3 requests)
+- **Q4**: Multi-turn conversation — 256 prompt → 256 output (3 requests)
+- **Q5**: Concurrent short requests — 32 prompt → 64 output (10 concurrent)
+- **Q6**: Concurrent long context — 512 prompt → 256 output (10 concurrent)
+- **Q7**: Chain-of-thought reasoning — 256 prompt → 512 output (3 requests)
+- **Q8**: Composite task — 192 prompt → 128 output (4 concurrent)
 
 ## Outputs
 
@@ -101,9 +108,10 @@ After running the benchmark, results are written to a folder like:
 ```
 benchmark_results/
 ├── benchmark_summary.json
-├── short_input_metrics.json
-├── long_input_metrics.json
-├── stress_test_metrics.json
+├── Q1_metrics.json
+├── Q2_metrics.json
+├── ...
+├── Q8_metrics.json
 └── REPORT.md
 ```
 
@@ -136,6 +144,12 @@ pytest tests/
 
 ### Performance Regression Check (CI)
 
+- Workflow: `.github/workflows/benchmark.yml`
+- Baseline directory: `benchmark_baselines/`
+- PR: runs lightweight E2E benchmark and comments regression report on PR
+- Release: runs fuller benchmark matrix and enforces regression thresholds
+- Manual baseline refresh: trigger workflow with `update_baseline=true`
+
 ```bash
 # Generate current perf snapshot
 sagellm-benchmark perf \
@@ -148,7 +162,7 @@ sagellm-benchmark perf \
 
 # Compare current snapshot with baseline
 python scripts/compare_performance_baseline.py \
-   --baseline benchmarks/baselines/perf_baseline_e2e.json \
+   --baseline benchmark_baselines/perf_baseline_e2e.json \
    --current benchmark_results/perf_current.json \
    --warning-threshold 5 \
    --critical-threshold 10 \

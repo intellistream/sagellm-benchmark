@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 
 from sagellm_core import LLMEngine, LLMEngineConfig
+
 from sagellm_benchmark.runner import BenchmarkConfig, BenchmarkRunner
 from sagellm_benchmark.workloads import M1_WORKLOADS
 
@@ -138,10 +139,10 @@ def export_for_comparison(results_path: Path):
         "framework": "sageLLM",
         "model": "sshleifer/tiny-gpt2",
         "backend": "cpu",
-        "workloads": {}
+        "workloads": {},
     }
 
-    for workload_name in ["short_input", "long_input", "stress_test"]:
+    for workload_name in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8"]:
         metrics_file = results_path / f"{workload_name}_metrics.json"
         if metrics_file.exists():
             with open(metrics_file) as f:

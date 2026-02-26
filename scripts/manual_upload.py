@@ -23,6 +23,7 @@
 2. 与 hf_data/ 或 outputs/ 数据合并（并发安全）
 3. 上传到 HF（需要 HF_TOKEN）
 """
+
 from __future__ import annotations
 
 import json
@@ -51,6 +52,7 @@ HF_DATA_DIR = BASE_DIR / "hf_data"
 # Step 1: 从 HF 下载现有数据
 # =============================================================================
 
+
 def download_from_hf(filename: str) -> list[dict]:
     """从 Hugging Face 下载现有数据"""
     url = f"{HF_ENDPOINT}/datasets/{HF_REPO}/resolve/{HF_BRANCH}/{filename}"
@@ -63,7 +65,7 @@ def download_from_hf(filename: str) -> list[dict]:
             return data
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            print(f"     ⚠️ 文件不存在（首次上传）")
+            print("     ⚠️ 文件不存在（首次上传）")
         else:
             print(f"     ⚠️ HTTP 错误 {e.code}: {e.reason}")
         return []
@@ -76,12 +78,13 @@ def download_from_hf(filename: str) -> list[dict]:
 # Step 2: 加载本地数据
 # =============================================================================
 
+
 def load_local_results() -> list[dict]:
     """递归加载 outputs 目录下的所有 leaderboard JSON 文件"""
     all_results = []
 
     if not OUTPUTS_DIR.exists():
-        print(f"  ⚠️ outputs 目录不存在")
+        print("  ⚠️ outputs 目录不存在")
         return []
 
     for json_file in OUTPUTS_DIR.rglob("*_leaderboard.json"):
@@ -99,6 +102,7 @@ def load_local_results() -> list[dict]:
 # =============================================================================
 # Step 3: 智能合并
 # =============================================================================
+
 
 def get_config_key(entry: dict) -> str:
     """生成配置唯一标识 key"""
@@ -201,6 +205,7 @@ def categorize_results(results: list[dict]) -> tuple[list, list]:
 # Step 4: 上传到 HF
 # =============================================================================
 
+
 def upload_to_hf(token: str) -> None:
     """上传文件到 Hugging Face"""
     try:
@@ -239,12 +244,13 @@ def upload_to_hf(token: str) -> None:
             repo_type="dataset",
             commit_message=f"Update {local_path.name} - {datetime.now().isoformat()}",
         )
-        print(f"     ✓ 完成")
+        print("     ✓ 完成")
 
 
 # =============================================================================
 # Main
 # =============================================================================
+
 
 def main():
     print("=" * 70)
@@ -269,7 +275,7 @@ def main():
         print("   2. git add hf_data/ && git commit && git push")
         sys.exit(1)
 
-    print(f"✅ HF_TOKEN 已设置")
+    print("✅ HF_TOKEN 已设置")
     print(f"📍 HF 仓库: {HF_REPO}")
 
     # Step 1: 从 HF 拉取现有数据（并发安全）
@@ -316,10 +322,10 @@ def main():
     print("Step 3: 智能合并（并发安全，基于 HF 最新数据）")
     print("-" * 70)
 
-    print(f"\n  Single (单机单卡+多卡):")
+    print("\n  Single (单机单卡+多卡):")
     merged_single = merge_results(existing_single, local_single)
 
-    print(f"\n  Multi (多机多卡):")
+    print("\n  Multi (多机多卡):")
     merged_multi = merge_results(existing_multi, local_multi)
 
     # 保存合并结果到本地
@@ -334,7 +340,7 @@ def main():
     with open(multi_file, "w", encoding="utf-8") as f:
         json.dump(merged_multi, f, indent=2, ensure_ascii=False)
 
-    print(f"\n  💾 已保存合并结果到 hf_data/")
+    print("\n  💾 已保存合并结果到 hf_data/")
     print(f"     - {single_file.name}: {len(merged_single)} 条")
     print(f"     - {multi_file.name}: {len(merged_multi)} 条")
 

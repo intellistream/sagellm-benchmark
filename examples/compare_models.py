@@ -18,7 +18,8 @@ async def benchmark_model(model_path: str, output_subdir: str):
     """
     from sagellm_backend.engine.cpu import CPUEngineConfig, create_cpu_engine
 
-    from sagellm_benchmark import run_year1_benchmark
+    from sagellm_benchmark.runner import BenchmarkConfig, BenchmarkRunner
+    from sagellm_benchmark.workloads import TPCH_WORKLOADS
 
     print(f"\n{'=' * 60}")
     print(f"🔥 Benchmarking: {model_path}")
@@ -35,9 +36,16 @@ async def benchmark_model(model_path: str, output_subdir: str):
 
     engine = create_cpu_engine(config)
 
-    # Run benchmark
+    # Run benchmark with Q1-Q8 workloads
     output_dir = Path(f"./benchmark_results/{output_subdir}")
-    results = await run_year1_benchmark(engine=engine, output_dir=output_dir)
+    bench_config = BenchmarkConfig(
+        engine=engine,
+        workloads=TPCH_WORKLOADS,
+        output_dir=output_dir,
+        verbose=True,
+    )
+    runner = BenchmarkRunner(bench_config)
+    results = await runner.run()
 
     # Stop engine
     await engine.stop()
@@ -78,8 +86,8 @@ async def main():
     print("-" * 80)
 
     for model_id, workload_results in all_results.items():
-        # Use short_input workload for comparison
-        metrics = workload_results.get("short_input")
+        # Use Q1 workload for comparison
+        metrics = workload_results.get("Q1")
         if metrics:
             print(
                 f"{model_id:<20} {metrics.avg_ttft_ms:>7.2f} (P95: {metrics.p95_ttft_ms:>5.2f})  "
