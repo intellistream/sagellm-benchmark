@@ -71,9 +71,10 @@ outputs/**/*_metrics.json
 outputs/**/*.log
 outputs/**/benchmark_summary.json
 
-# ❌ 忽略: 旧的 results/ 目录
+# ❌ 忽略: 旧的 results/ 目录及所有 benchmark_results* 目录
 results/
-benchmark_results/*
+benchmark_results*/
+benchmark_results/
 
 # --------------------------------------------------------------------------
 # Issue #13: Repo size policy — large data files must NOT be committed

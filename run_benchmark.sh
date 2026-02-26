@@ -33,10 +33,25 @@ echo "[3/4] Generating markdown report..."
 sagellm-benchmark report --input "$OUTPUT_DIR/benchmark_summary.json" --format markdown > "$OUTPUT_DIR/REPORT.md"
 
 echo ""
-echo "[4/4] Done! Results saved to:"
+echo "[4/4] Results saved to:"
 echo "  - $OUTPUT_DIR/benchmark_summary.json"
 echo "  - $OUTPUT_DIR/Q1_metrics.json ... Q8_metrics.json"
 echo "  - $OUTPUT_DIR/Q1_leaderboard.json ... Q8_leaderboard.json"
 echo "  - $OUTPUT_DIR/REPORT.md"
+echo ""
+
+# Optional: Upload to Hugging Face (requires HF_TOKEN)
+if [ -n "${HF_TOKEN:-}" ]; then
+    echo "[5/5] Uploading leaderboard data to Hugging Face..."
+    sagellm-benchmark upload-hf \
+        --input "$OUTPUT_DIR" \
+        --dataset intellistream/sagellm-benchmark-results \
+        --token "$HF_TOKEN"
+    echo ""
+    echo "✓ HF upload complete!"
+else
+    echo "[5/5] Skipping HF upload (HF_TOKEN not set)"
+    echo "      To enable: export HF_TOKEN=hf_xxx && ./run_benchmark.sh"
+fi
 echo ""
 echo "✓ Benchmark completed successfully!"
