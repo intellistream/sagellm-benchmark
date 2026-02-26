@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- quickstart.sh: replace `cp` with `ln -sf` for git hooks installation to fix "are the same file" error when hooks are already symlinks
+
 ### Changed
 - **Cleanup**: Removed all "year1"/`m1`/`short_input`/`long_input`/`stress_test` references from user-facing CLI, README, QUICKSTART, and examples; Q1-Q8 (`--workload all`) is now the canonical benchmark suite.
 - `run_benchmark.sh` confirmed to use `--workload all` (Q1-Q8); leaderboard exporter updated with Q1-Q8 workload spec mapping.

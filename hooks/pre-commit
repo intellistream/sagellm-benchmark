@@ -11,7 +11,7 @@
 #     Always use `pre-commit install` or `./quickstart.sh`.
 
 if command -v pre-commit >/dev/null 2>&1; then
-    exec pre-commit hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit -- "$@"
+    exec pre-commit hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit --hook-dir "$(cd "$(dirname "$0")" && pwd)" -- "$@"
 else
     echo "pre-commit not found. Run: pip install pre-commit && pre-commit install" >&2
     exit 1
