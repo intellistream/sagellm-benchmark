@@ -19,9 +19,9 @@ classifiers = [
 
 dependencies = [
     # Core sagellm dependencies
-    "isagellm-protocol>=0.5.2.0,<0.6.0",
-    "isagellm-core>=0.5.2.0,<0.6.0",     # Engine creation and execution
-    "isagellm-backend>=0.5.2.13,<0.6.0",  # Backend providers (CPU/CUDA/etc)
+    "isagellm-protocol>=0.5.2.8,<0.6.0",
+    "isagellm-core>=0.5.2.13,<0.6.0",     # Engine creation and execution
+    "isagellm-backend>=0.5.3.5,<0.6.0",  # Backend providers (CPU/CUDA/etc)
     # CLI dependencies
     "click>=8.0.0",
     "rich>=13.0.0",
@@ -46,7 +46,7 @@ dev = [
     # Heavy optional backends (only install locally, not in CI)
     "vllm>=0.2.0",
     "lmdeploy>=0.2.0",
-    "isage-pypi-publisher>=0.2.0",
+    "isage-pypi-publisher>=0.2.0.0",
 ]
 
 [project.scripts]
