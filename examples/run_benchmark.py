@@ -1,4 +1,4 @@
-"""Example: Run Year 1 benchmark on CPU engine."""
+"""Example: Run Q1-Q8 benchmark on CPU engine."""
 
 import asyncio
 import sys
@@ -14,7 +14,8 @@ async def main():
     """Run benchmark example."""
     from sagellm_backend.engine.cpu import CPUEngineConfig, create_cpu_engine
 
-    from sagellm_benchmark import run_year1_benchmark
+    from sagellm_benchmark.runner import BenchmarkConfig, BenchmarkRunner
+    from sagellm_benchmark.workloads import TPCH_WORKLOADS
 
     # Create CPU engine
     config = CPUEngineConfig(
@@ -27,16 +28,20 @@ async def main():
 
     engine = create_cpu_engine(config)
 
-    print("🚀 Starting benchmark with CPU engine...")
+    print("🚀 Starting Q1-Q8 benchmark with CPU engine...")
     print(f"   Model: {config.model_path}")
     print(f"   Threads: {config.num_threads}")
     print()
 
-    # Run benchmark
-    results = await run_year1_benchmark(
+    # Run benchmark with Q1-Q8 workloads
+    bench_config = BenchmarkConfig(
         engine=engine,
+        workloads=TPCH_WORKLOADS,
         output_dir=Path("./benchmark_results"),
+        verbose=True,
     )
+    runner = BenchmarkRunner(bench_config)
+    results = await runner.run()
 
     # Print summary
     print("\n" + "=" * 60)

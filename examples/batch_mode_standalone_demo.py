@@ -72,7 +72,7 @@ async def demo_batch_mode():
         seed=42,
     )
 
-    logger.info(f"\nConfiguration:")
+    logger.info("\nConfiguration:")
     logger.info(f"  Pattern: {profile.pattern.value}")
     logger.info(f"  Warmup requests: {profile.warmup_requests}")
 
@@ -111,7 +111,7 @@ async def demo_batch_mode():
     successful = sum(1 for r in results if r.success)
     failed = sum(1 for r in results if not r.success)
 
-    logger.info(f"\nExecution Summary:")
+    logger.info("\nExecution Summary:")
     logger.info(f"  Total results (after warmup): {len(results)}")
     logger.info(f"  Successful: {successful}")
     logger.info(f"  Failed: {failed}")
@@ -130,17 +130,17 @@ async def demo_batch_mode():
         output_throughput = total_output_tokens / batch_total_time
         total_throughput = total_tokens / batch_total_time
 
-        logger.info(f"\nTiming:")
+        logger.info("\nTiming:")
         logger.info(f"  Batch total time: {batch_total_time:.3f}s")
         logger.info(f"  Measured time: {end - start:.3f}s")
 
-        logger.info(f"\nThroughput Metrics (like vLLM/SGLang):")
+        logger.info("\nThroughput Metrics (like vLLM/SGLang):")
         logger.info(f"  Request throughput: {request_throughput:>8.2f} req/s")
         logger.info(f"  Input throughput:   {input_throughput:>8.2f} tokens/s")
         logger.info(f"  Output throughput:  {output_throughput:>8.2f} tokens/s")
         logger.info(f"  Total throughput:   {total_throughput:>8.2f} tokens/s")
 
-        logger.info(f"\nToken Statistics:")
+        logger.info("\nToken Statistics:")
         logger.info(f"  Total input tokens:  {total_input_tokens:>6}")
         logger.info(f"  Total output tokens: {total_output_tokens:>6}")
         logger.info(f"  Total tokens:        {total_tokens:>6}")

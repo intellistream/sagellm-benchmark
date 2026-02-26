@@ -2,11 +2,18 @@
 
 ## What is this?
 
-sageLLM Benchmark is a standardized testing suite for validating LLM inference engines. It runs three types of workloads:
+sageLLM Benchmark is a standardized testing suite for validating LLM inference engines. It runs **Q1-Q8 query workloads** covering diverse LLM scenarios:
 
-1. **Short input**: Fast requests with short prompts
-2. **Long input**: Requests with longer context
-3. **Stress test**: Concurrent requests to test system limits
+| Workload | Type | Prompt Tokens | Max Output | Requests | Concurrent |
+|----------|------|---------------|------------|----------|------------|
+| Q1 | Short Q&A | 32 | 64 | 5 | No |
+| Q2 | Long context summarization | 512 | 128 | 3 | No |
+| Q3 | Code generation | 128 | 256 | 3 | No |
+| Q4 | Multi-turn conversation | 256 | 256 | 3 | No |
+| Q5 | Concurrent short | 32 | 64 | 10 | Yes |
+| Q6 | Concurrent long context | 512 | 256 | 10 | Yes |
+| Q7 | Chain-of-thought reasoning | 256 | 512 | 3 | No |
+| Q8 | Composite task | 192 | 128 | 4 | Yes |
 
 ## Installation
 
@@ -28,8 +35,8 @@ That's it! Results will be in `./benchmark_results/`
 ### Option 2: Manual CLI
 
 ```bash
-# Run all three workloads
-sagellm-benchmark run --workload m1 --backend cpu
+# Run all Q1-Q8 workloads
+sagellm-benchmark run --workload all --backend cpu
 
 # View results
 sagellm-benchmark report
@@ -42,9 +49,10 @@ After running, you'll have:
 ```
 benchmark_results/
 ├── benchmark_summary.json       # Overall summary
-├── short_input_metrics.json     # Short workload metrics
-├── long_input_metrics.json      # Long workload metrics
-├── stress_test_metrics.json     # Stress test metrics
+├── Q1_metrics.json              # Q1 workload metrics
+├── Q2_metrics.json              # Q2 workload metrics
+├── ...
+├── Q8_metrics.json              # Q8 workload metrics
 └── REPORT.md                    # Human-readable report
 ```
 
@@ -54,13 +62,14 @@ benchmark_results/
 
 ```
 Benchmark Results
-┏━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┓
-┃ Workload    ┃ Requests ┃ Errors ┃ Avg TTFT (ms) ┃ Throughput (tok/s) ┃
-┡━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━┩
-│ short_input │        5 │      0 │         10.00 │              100.00 │
-│ long_input  │        3 │      0 │         15.00 │               75.00 │
-│ stress_test │       10 │      1 │         12.00 │               90.00 │
-└─────────────┴──────────┴────────┴───────────────┴────────────────────┘
+┏━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┓
+┃ Workload ┃ Requests ┃ Errors ┃ Avg TTFT (ms) ┃ Throughput (tok/s) ┃
+┡━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━┩
+│ Q1       │        5 │      0 │         10.00 │             100.00 │
+│ Q2       │        3 │      0 │         15.00 │              75.00 │
+│ ...      │      ... │    ... │           ... │                ... │
+│ Q8       │        4 │      0 │         12.00 │              90.00 │
+└──────────┴──────────┴────────┴───────────────┴────────────────────┘
 ```
 
 ### Key Metrics Explained
@@ -75,7 +84,6 @@ Benchmark Results
 
 - **Error Rate**: Percentage of failed requests
   - Lower is better
-  - Some errors expected in stress tests
 
 ## Backend Options
 
@@ -95,17 +103,17 @@ sagellm-benchmark run --backend cpu --model gpt2
 ## Common Commands
 
 ```bash
-# Run specific workload
-sagellm-benchmark run --workload short --backend cpu
+# Run specific query workload
+sagellm-benchmark run --workload Q3 --backend cpu
 
 # Run in batch mode (offline throughput, vLLM/SGLang compatible)
-sagellm-benchmark run --workload m1 --backend cpu --mode batch
+sagellm-benchmark run --workload all --backend cpu --mode batch
 
 # Run with custom JSON output
-sagellm-benchmark run --workload m1 --backend cpu --output-json ./my_results.json
+sagellm-benchmark run --workload all --backend cpu --output-json ./my_results.json
 
 # Run with verbose logging
-sagellm-benchmark run --workload m1 --backend cpu -v
+sagellm-benchmark run --workload all --backend cpu -v
 
 # Custom output directory
 sagellm-benchmark run --output ./my_results
@@ -135,7 +143,7 @@ sagellm-benchmark run --backend cpu --model gpt2
 
 Run benchmark first:
 ```bash
-sagellm-benchmark run --workload year1 --backend cpu
+sagellm-benchmark run --workload all --backend cpu
 ```
 
 ## Next Steps
@@ -151,10 +159,10 @@ sageLLM Benchmark now supports modes compatible with vLLM and SGLang:
 
 ```bash
 # Batch mode - comparable to vLLM's offline throughput
-sagellm-benchmark run --workload m1 --backend cpu --mode batch
+sagellm-benchmark run --workload all --backend cpu --mode batch
 
 # Traffic mode - comparable to SGLang's serving benchmark
-sagellm-benchmark run --workload stress --backend cpu --mode traffic
+sagellm-benchmark run --workload all --backend cpu --mode traffic
 ```
 
 **Output includes vLLM/SGLang compatible metrics:**
@@ -175,7 +183,7 @@ See [USAGE.md - Benchmarking Against vLLM/SGLang](../docs/USAGE.md#benchmarking-
 ```bash
 # Quick start in 3 commands:
 pip install isagellm-benchmark
-sagellm-benchmark run --workload year1 --backend cpu
+sagellm-benchmark run --workload all --backend cpu
 sagellm-benchmark report
 ```
 

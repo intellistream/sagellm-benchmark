@@ -81,8 +81,9 @@ class WorkloadConfig:
     extra_params: dict[str, Any] = field(default_factory=dict)
 
 
-# Predefined workloads matching M1 Demo Contract
-YEAR1_WORKLOADS = [
+# Legacy workloads (deprecated – retained only for backward compatibility)
+# Use TPCH_WORKLOADS (Q1-Q8) for all new benchmarks.
+_LEGACY_WORKLOADS = [
     WorkloadConfig(
         name="short_input",
         workload_type=WorkloadType.SHORT,
@@ -94,9 +95,9 @@ YEAR1_WORKLOADS = [
     WorkloadConfig(
         name="long_input",
         workload_type=WorkloadType.LONG,
-        prompt=" ".join(["This is context about AI and technology."] * 20),  # ~200 tokens
+        prompt=" ".join(["This is context about AI and technology."] * 20),
         prompt_tokens=200,
-        max_tokens=200,  # Reduced for tiny models
+        max_tokens=200,
         num_requests=3,
     ),
     WorkloadConfig(
@@ -110,8 +111,9 @@ YEAR1_WORKLOADS = [
     ),
 ]
 
-# Backward-compatible alias for M1 naming
-M1_WORKLOADS = YEAR1_WORKLOADS
+# Backward-compatible aliases (deprecated)
+YEAR1_WORKLOADS = _LEGACY_WORKLOADS
+M1_WORKLOADS = _LEGACY_WORKLOADS
 
 
 # TPCH/TPCC-style query workloads
@@ -215,10 +217,27 @@ def get_workloads_by_selector(selector: str) -> list[WorkloadConfig]:
 
     if selected in {"all", "query"}:
         return TPCH_WORKLOADS
+    # Legacy selectors (deprecated – prefer Q1-Q8 or 'all')
     if selected in {"m1", "year1"}:
-        return M1_WORKLOADS
+        import warnings
+
+        warnings.warn(
+            "'year1'/'m1' workloads are deprecated. Use '--workload all' for Q1-Q8.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return _LEGACY_WORKLOADS
     if selected in {"short", "long", "stress"}:
-        return [workload for workload in M1_WORKLOADS if workload.workload_type.value == selected]
+        import warnings
+
+        warnings.warn(
+            f"'{selected}' workload is deprecated. Use Q1-Q8 workloads instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return [
+            workload for workload in _LEGACY_WORKLOADS if workload.workload_type.value == selected
+        ]
     if selected == "streaming":
         return STREAMING_WORKLOADS
     if selected in {"batch", "batch_inference"}:

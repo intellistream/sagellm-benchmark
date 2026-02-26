@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Cleanup**: Removed all "year1"/`m1`/`short_input`/`long_input`/`stress_test` references from user-facing CLI, README, QUICKSTART, and examples; Q1-Q8 (`--workload all`) is now the canonical benchmark suite.
+- `run_benchmark.sh` confirmed to use `--workload all` (Q1-Q8); leaderboard exporter updated with Q1-Q8 workload spec mapping.
+- Legacy `YEAR1_WORKLOADS`/`M1_WORKLOADS` retained internally behind `DeprecationWarning` for backward compatibility only.
+
 ### Added
 - **Issue #1**: Extended `WorkloadType` with `STREAMING`, `BATCH_INFERENCE`, `MIXED`; added `top_k`, `repetition_penalty`, `stream`, `warmup_rounds`, `concurrency` to `WorkloadConfig`; added predefined workload lists `STREAMING_WORKLOADS`, `BATCH_INFERENCE_WORKLOADS`, `MIXED_WORKLOADS`; extended `get_workloads_by_selector()` with new selectors.
 - **Issue #2**: New `HTMLReporter` (`reporters/html_reporter.py`) generating interactive Chart.js reports for single-run and multi-run comparison with latency/throughput/KV-cache charts.

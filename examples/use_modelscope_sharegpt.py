@@ -11,11 +11,12 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from sagellm_benchmark.datasets import ShareGPTDataset
-from sagellm_benchmark.types import WorkloadSpec, WorkloadType
 from sagellm_core import create_backend, create_engine
 from sagellm_core.config import BackendConfig, EngineConfig
 from sagellm_protocol import Request
+
+from sagellm_benchmark.datasets import ShareGPTDataset
+from sagellm_benchmark.types import WorkloadSpec, WorkloadType
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

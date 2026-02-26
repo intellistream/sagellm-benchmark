@@ -187,8 +187,8 @@ async def demo_batch_vs_traffic_mode() -> None:
 
     logger.info("\n" + "=" * 60)
     logger.info("Summary:")
-    logger.info(f"  BATCH mode is for offline throughput (max capacity)")
-    logger.info(f"  TRAFFIC modes are for realistic load simulation")
+    logger.info("  BATCH mode is for offline throughput (max capacity)")
+    logger.info("  TRAFFIC modes are for realistic load simulation")
     logger.info("=" * 60)
 
 
