@@ -23,6 +23,7 @@
 2. 与 hf_data/ 或 outputs/ 数据合并（并发安全）
 3. 上传到 HF（需要 HF_TOKEN）
 """
+
 from __future__ import annotations
 
 import json
@@ -51,6 +52,7 @@ HF_DATA_DIR = BASE_DIR / "hf_data"
 # Step 1: 从 HF 下载现有数据
 # =============================================================================
 
+
 def download_from_hf(filename: str) -> list[dict]:
     """从 Hugging Face 下载现有数据"""
     url = f"{HF_ENDPOINT}/datasets/{HF_REPO}/resolve/{HF_BRANCH}/{filename}"
@@ -76,6 +78,7 @@ def download_from_hf(filename: str) -> list[dict]:
 # Step 2: 加载本地数据
 # =============================================================================
 
+
 def load_local_results() -> list[dict]:
     """递归加载 outputs 目录下的所有 leaderboard JSON 文件"""
     all_results = []
@@ -99,6 +102,7 @@ def load_local_results() -> list[dict]:
 # =============================================================================
 # Step 3: 智能合并
 # =============================================================================
+
 
 def get_config_key(entry: dict) -> str:
     """生成配置唯一标识 key"""
@@ -201,6 +205,7 @@ def categorize_results(results: list[dict]) -> tuple[list, list]:
 # Step 4: 上传到 HF
 # =============================================================================
 
+
 def upload_to_hf(token: str) -> None:
     """上传文件到 Hugging Face"""
     try:
@@ -245,6 +250,7 @@ def upload_to_hf(token: str) -> None:
 # =============================================================================
 # Main
 # =============================================================================
+
 
 def main():
     print("=" * 70)

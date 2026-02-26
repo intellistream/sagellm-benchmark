@@ -138,7 +138,7 @@ def export_for_comparison(results_path: Path):
         "framework": "sageLLM",
         "model": "sshleifer/tiny-gpt2",
         "backend": "cpu",
-        "workloads": {}
+        "workloads": {},
     }
 
     for workload_name in ["short_input", "long_input", "stress_test"]:

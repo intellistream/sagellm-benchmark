@@ -5,6 +5,7 @@
 运行方式：
     HF_TOKEN=hf_xxx python scripts/upload_to_hf.py
 """
+
 from __future__ import annotations
 
 import os

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MockMetrics:
     """Mock metrics for demonstration."""
+
     ttft_ms: float = 0.0
     tbt_ms: float = 0.0
     e2e_latency_ms: float = 0.0
@@ -117,7 +118,7 @@ async def demo_batch_mode():
     logger.info(f"  Client request count: {client.request_count}")
 
     # Calculate throughput metrics
-    if results and hasattr(results[0], '_batch_total_time_s'):
+    if results and hasattr(results[0], "_batch_total_time_s"):
         batch_total_time = results[0]._batch_total_time_s
 
         total_input_tokens = sum(r.prompt_tokens for r in results)
@@ -183,12 +184,14 @@ async def compare_modes():
 
         throughput = len(results) / elapsed if elapsed > 0 else 0
 
-        results_summary.append({
-            "mode": mode_name,
-            "requests": len(results),
-            "time": elapsed,
-            "throughput": throughput,
-        })
+        results_summary.append(
+            {
+                "mode": mode_name,
+                "requests": len(results),
+                "time": elapsed,
+                "throughput": throughput,
+            }
+        )
 
         logger.info(f"\n{mode_name}:")
         logger.info(f"  Requests: {len(results)}")

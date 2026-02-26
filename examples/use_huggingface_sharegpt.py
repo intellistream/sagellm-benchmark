@@ -39,9 +39,9 @@ async def main() -> None:
     spec = WorkloadSpec(
         name="sharegpt_short",
         workload_type=WorkloadType.SHORT,
-        prompt_len=128,      # 目标 prompt 长度（tokens）
-        output_len=128,      # 生成长度
-        num_requests=3,      # 采样 3 个请求
+        prompt_len=128,  # 目标 prompt 长度（tokens）
+        output_len=128,  # 生成长度
+        num_requests=3,  # 采样 3 个请求
         kv_budget_tokens=None,
     )
 
@@ -82,7 +82,7 @@ async def main() -> None:
             stream=False,
         )
 
-        logger.info(f"\n{'='*60}")
+        logger.info(f"\n{'=' * 60}")
         logger.info(f"Request {i}/{len(benchmark_requests)}")
         logger.info(f"Prompt length: {len(bench_req.prompt)} chars")
 

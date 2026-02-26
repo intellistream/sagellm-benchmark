@@ -40,8 +40,8 @@ async def demo_batch_mode() -> None:
     # Create a stub client with realistic latencies
     client = StubClient(
         ttft_ms=20.0,  # 20ms time to first token
-        tbt_ms=10.0,   # 10ms between tokens
-        name="demo-client"
+        tbt_ms=10.0,  # 10ms between tokens
+        name="demo-client",
     )
 
     # Configure BATCH mode with warmup
@@ -85,7 +85,7 @@ async def demo_batch_mode() -> None:
     logger.info(f"Successful: {sum(1 for r in results if r.success)}")
     logger.info(f"Failed: {sum(1 for r in results if not r.success)}")
 
-    if results and hasattr(results[0], '_batch_total_time_s'):
+    if results and hasattr(results[0], "_batch_total_time_s"):
         total_time = results[0]._batch_total_time_s
         logger.info(f"\nTotal execution time: {total_time:.3f}s")
 
@@ -146,6 +146,7 @@ async def demo_batch_vs_traffic_mode() -> None:
     controller_batch = TrafficController(client_batch, profile_batch)
 
     import time
+
     start = time.perf_counter()
     results_batch = await controller_batch.run(requests.copy())
     batch_time = time.perf_counter() - start

@@ -75,6 +75,35 @@ outputs/**/benchmark_summary.json
 results/
 benchmark_results/*
 
+# --------------------------------------------------------------------------
+# Issue #13: Repo size policy — large data files must NOT be committed
+# --------------------------------------------------------------------------
+# Model weights and checkpoints
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.gguf
+
+# HuggingFace dataset cache
+hf_datasets_cache/
+~/.cache/huggingface/
+
+# Large raw datasets (should be stored on HuggingFace / shared object storage)
+data/raw/
+data/processed/
+*.parquet
+*.arrow
+*.csv.gz
+*.jsonl.gz
+
+# Benchmark run archives (large output artifacts)
+outputs/**/*.jsonl
+outputs/**/*.bin
+dashboard.html
+
 # RFC drafts
 .github/rfc*
 
