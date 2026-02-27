@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Legacy `YEAR1_WORKLOADS`/`M1_WORKLOADS` retained internally behind `DeprecationWarning` for backward compatibility only.
 
 ### Added
+- **Issue #23**: Added `scripts/local_ci_fallback.sh` for local equivalent CI checks when GitHub Actions is blocked by billing/quota (runs pre-commit, version guard, pytest+coverage, and build+twine).
 - **Issue #1**: Extended `WorkloadType` with `STREAMING`, `BATCH_INFERENCE`, `MIXED`; added `top_k`, `repetition_penalty`, `stream`, `warmup_rounds`, `concurrency` to `WorkloadConfig`; added predefined workload lists `STREAMING_WORKLOADS`, `BATCH_INFERENCE_WORKLOADS`, `MIXED_WORKLOADS`; extended `get_workloads_by_selector()` with new selectors.
 - **Issue #2**: New `HTMLReporter` (`reporters/html_reporter.py`) generating interactive Chart.js reports for single-run and multi-run comparison with latency/throughput/KV-cache charts.
 - **Issue #4**: New `MultiEngineRunner` (`clients/multi_engine.py`) with `EngineType` (StrEnum), `EngineInfo`, `EngineRunResult` for cross-backend performance comparison; exported from `clients/__init__.py`.
@@ -34,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI install recovery: lowered internal dependency minimums to published baselines (`protocol/core/backend >= 0.5.2.0/0.5.2.0/0.5.2.13`) to avoid `No matching distribution found` during `pip install -e .`.
 
 ### Changed
+- `WORKFLOW.md` / `README.md`: documented billing-blocked GitHub Actions fallback process and local validation command.
 - **chore: standardize pre-commit hooks** — migrate all checks to `.pre-commit-config.yaml`; replace `hooks/pre-commit` with delegation stub; `./quickstart.sh` and `pre-commit install` are now equivalent
 - CI `version-check` 改为按 `.pre-commit-config.yaml` 动态安装 `ruff`，移除硬编码版本
 - CI 安装阶段增加 `pip cache purge || true`，缓解 `No space left on device` 导致的依赖安装失败

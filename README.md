@@ -142,6 +142,14 @@ pip install -e .[dev,all-clients]
 pytest tests/
 ```
 
+### Local CI Fallback (when GitHub Actions is blocked)
+
+```bash
+bash scripts/local_ci_fallback.sh
+```
+
+This runs the same core checks as `.github/workflows/ci.yml` locally (pre-commit, version guard, pytest+coverage, build+twine).
+
 ### Performance Regression Check (CI)
 
 - Workflow: `.github/workflows/benchmark.yml`
