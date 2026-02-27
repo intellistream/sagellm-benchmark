@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- chore(release): bump `isagellm-benchmark` version to `0.5.4.0` and raise minimum bounds for `isagellm-protocol`/`isagellm-core`/`isagellm-backend` to `>=0.5.4.0,<0.6.0`.
+
 ### Fixed
 - quickstart.sh: replace `cp` with `ln -sf` for git hooks installation to fix "are the same file" error when hooks are already symlinks
 
