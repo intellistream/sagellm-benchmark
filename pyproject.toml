@@ -37,15 +37,18 @@ dependencies = [
 
 [project.optional-dependencies]
 # Local development dependencies (NOT used in CI — vllm/lmdeploy are too large)
+full = [
+    "vllm>=0.2.0",
+    "lmdeploy>=0.2.0",
+]
 dev = [
+    # dev includes [full] — no need for a separate extras install
+    "isagellm-benchmark[full]",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-asyncio>=0.21.0",
     "ruff>=0.1.0",
     "httpx>=0.24.0",
-    # Heavy optional backends (only install locally, not in CI)
-    "vllm>=0.2.0",
-    "lmdeploy>=0.2.0",
     "isage-pypi-publisher>=0.2.0.0",
 ]
 
