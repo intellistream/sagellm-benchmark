@@ -1,10 +1,12 @@
-#!/bin/bash
-# sagellm-benchmark: Quick Start
-# Benchmark suite
+#!/usr/bin/env bash
+# quickstart.sh — sagellm-benchmark environment setup
+#
+# 安装语义：
+# - standard: 依赖优先从 PyPI 安装（稳定/发布导向）
+# - dev:      在 standard 基础上，尽量用本地 editable 覆盖（--no-deps）
 
-set -e
+set -euo pipefail
 
-# Colors
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
@@ -13,97 +15,293 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BOLD}${BLUE}sagellm-benchmark Quick Start${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-# Require clean virtual environment
-if [ -n "$CONDA_DEFAULT_ENV" ] || [ -n "$VIRTUAL_ENV" ]; then
-    echo -e "${GREEN}  ✅ 已检测到虚拟环境${NC}"
-else
-    echo -e "${RED}  ❌ 未检测到虚拟环境，开发必须先创建并激活环境${NC}"
-    echo -e "${YELLOW}  👉 推荐（Conda）：${NC}"
-    echo -e "     conda create -n sage python=3.11"
-    echo -e "     conda activate sage"
-    echo ""
-    exit 1
-fi
-echo ""
-
-# Detect project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
+PARENT_DIR="$(dirname "$PROJECT_ROOT")"
 
-echo -e "${BLUE}📂 Project root: ${NC}$PROJECT_ROOT"
-echo ""
+INSTALL_MODE="dev"
+DOCTOR="false"
+SKIP_HOOKS="false"
+SKIP_CLEANUP="false"
+YES="false"
 
-echo -e "${YELLOW}${BOLD}Step 1/4: Installing Git Hooks${NC}"
-
-HOOKS_DIR="$PROJECT_ROOT/.git/hooks"
-TEMPLATE_DIR="$PROJECT_ROOT/hooks"
-
-if [ -d "$HOOKS_DIR" ]; then
-
-    if [ -f "$TEMPLATE_DIR/pre-commit" ]; then
-        cp "$TEMPLATE_DIR/pre-commit" "$HOOKS_DIR/pre-commit"
-        chmod +x "$HOOKS_DIR/pre-commit"
-        echo -e "${GREEN}✓ Installed pre-commit hook${NC}"
-    else
-        echo -e "${YELLOW}⚠  pre-commit template not found, skipping${NC}"
-    fi
-
-    if [ -f "$TEMPLATE_DIR/pre-push" ]; then
-        cp "$TEMPLATE_DIR/pre-push" "$HOOKS_DIR/pre-push"
-        chmod +x "$HOOKS_DIR/pre-push"
-        echo -e "${GREEN}✓ Installed pre-push hook${NC}"
-    fi
-
-    if [ -f "$TEMPLATE_DIR/post-commit" ]; then
-        cp "$TEMPLATE_DIR/post-commit" "$HOOKS_DIR/post-commit"
-        chmod +x "$HOOKS_DIR/post-commit"
-        echo -e "${GREEN}✓ Installed post-commit hook${NC}"
-    else
-        echo -e "${YELLOW}⚠  pre-push template not found, skipping${NC}"
-    fi
-else
-    echo -e "${YELLOW}⚠  .git 目录不存在，跳过 hooks 安装${NC}"
-fi
-
-echo ""
-
-echo -e "${YELLOW}${BOLD}Step 2/4: Checking Python${NC}"
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}✗ Python3 not found${NC}"
-    exit 1
-fi
-
-PYTHON_VERSION=$(python3 --version | awk '{print $2}')
-python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" || {
-    echo -e "${RED}✗ Python $PYTHON_VERSION 版本过低，需要 >= 3.10${NC}"
-    exit 1
+show_help() {
+    echo "sagellm-benchmark Quick Start"
+    echo ""
+    echo "用法:"
+    echo "  ./quickstart.sh                 默认开发安装 (--dev)"
+    echo "  ./quickstart.sh --dev           开发模式：先安装 PyPI 基线，再用本地 editable 覆盖"
+    echo "  ./quickstart.sh --standard      标准模式：依赖从 PyPI 安装，当前仓库 editable 安装"
+    echo "  ./quickstart.sh --doctor        仅做环境诊断"
+    echo "  ./quickstart.sh --skip-cleanup  跳过 isagellm-* 历史包清理"
+    echo "  ./quickstart.sh --skip-hooks    跳过 Git hooks 安装"
+    echo "  ./quickstart.sh --yes|-y        非交互模式（保留兼容参数）"
+    echo "  ./quickstart.sh --help          显示帮助"
 }
-echo -e "${GREEN}✓ Python $PYTHON_VERSION${NC}"
 
-echo ""
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dev)
+                INSTALL_MODE="dev"
+                ;;
+            --standard)
+                INSTALL_MODE="standard"
+                ;;
+            --doctor)
+                DOCTOR="true"
+                ;;
+            --skip-hooks)
+                SKIP_HOOKS="true"
+                ;;
+            --skip-cleanup)
+                SKIP_CLEANUP="true"
+                ;;
+            --yes|-y)
+                YES="true"
+                ;;
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}❌ 未知参数: $1${NC}"
+                echo ""
+                show_help
+                exit 1
+                ;;
+        esac
+        shift
+    done
+}
 
-echo -e "${YELLOW}${BOLD}Step 3/4: Install PyPI dependencies${NC}"
-echo -e "${BLUE}📦 Installing sagellm dependencies from PyPI (latest)...${NC}"
-# 依赖仓库从 PyPI 安装最新版本，不使用本地路径
-pip install isagellm-protocol isagellm-core isagellm-backend --quiet
-echo -e "${GREEN}✓ PyPI dependencies installed${NC}"
+detect_python() {
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON_CMD="python3"
+    elif command -v python >/dev/null 2>&1; then
+        PYTHON_CMD="python"
+    else
+        echo -e "${RED}❌ 未找到可用 Python 命令（python3/python）${NC}"
+        exit 1
+    fi
+    PIP_CMD=("$PYTHON_CMD" -m pip)
+}
 
-echo ""
-echo -e "${YELLOW}${BOLD}Step 4/4: Install package (editable)${NC}"
-echo -e "${BLUE}📦 Installing isagellm-benchmark...${NC}"
-pip install -e ".[dev]" --quiet 2>/dev/null || pip install -e . --quiet
+run_with_diagnostics() {
+    local label="$1"
+    shift
+    local log_file
+    log_file=$(mktemp)
 
-echo ""
+    if "$@" >"$log_file" 2>&1; then
+        rm -f "$log_file"
+        return 0
+    fi
 
-echo ""
-echo -e "${GREEN}${BOLD}✓ Setup Complete${NC}"
-echo ""
-echo -e "${BLUE}${BOLD}Next Steps:${NC}"
-echo -e "  ${CYAN}1.${NC} 运行测试: ${CYAN}pytest -v${NC}"
-echo -e "  ${CYAN}2.${NC} 运行基准: ${CYAN}./run_benchmark.sh${NC}"
-echo -e "  ${CYAN}3.${NC} 代码规范: ${CYAN}ruff check .${NC}"
-echo -e "  ${CYAN}4.${NC} 阅读文档: ${CYAN}cat README.md${NC}"
+    echo -e "${RED}❌ ${label} 失败${NC}"
+    echo -e "${YELLOW}--- 详细错误日志开始 ---${NC}"
+    cat "$log_file"
+    echo -e "${YELLOW}--- 详细错误日志结束 ---${NC}"
+    rm -f "$log_file"
+    return 1
+}
+
+run_doctor() {
+    echo -e "${BOLD}${BLUE}Environment Diagnosis${NC}"
+    echo ""
+    echo -e "${YELLOW}Python:${NC} $($PYTHON_CMD --version 2>/dev/null || echo 'NOT FOUND')"
+    echo -e "${YELLOW}Conda env:${NC} ${CONDA_DEFAULT_ENV:-none}"
+    echo -e "${YELLOW}Venv:${NC} ${VIRTUAL_ENV:-none}"
+    echo -e "${YELLOW}ruff:${NC} $(ruff --version 2>/dev/null || echo 'NOT FOUND')"
+    echo -e "${YELLOW}pytest:${NC} $(pytest --version 2>/dev/null || echo 'NOT FOUND')"
+    echo ""
+    echo -e "${YELLOW}Git hooks installed:${NC}"
+    for h in pre-commit pre-push post-commit; do
+        if [ -f "$PROJECT_ROOT/.git/hooks/$h" ]; then
+            echo -e "  ${GREEN}✓ $h${NC}"
+        else
+            echo -e "  ${RED}✗ $h${NC}"
+        fi
+    done
+}
+
+check_environment() {
+    if [ -n "${VIRTUAL_ENV:-}" ]; then
+        echo -e "${RED}❌ Detected Python venv: ${VIRTUAL_ENV}${NC}"
+        echo -e "${YELLOW}👉 This repository forbids venv/.venv. Please use an existing non-venv env.${NC}"
+        exit 1
+    fi
+
+    local py_version
+    py_version="$($PYTHON_CMD --version | awk '{print $2}')"
+    if ! $PYTHON_CMD -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"; then
+        echo -e "${RED}❌ Python ${py_version} 版本过低，需要 >= 3.11${NC}"
+        exit 1
+    fi
+
+    if [ -n "${CONDA_DEFAULT_ENV:-}" ]; then
+        echo -e "${GREEN}✓ Conda env: ${CONDA_DEFAULT_ENV}${NC}"
+    else
+        echo -e "${YELLOW}⚠ 未检测到 Conda 环境，请确认当前为已配置的非-venv Python 环境${NC}"
+    fi
+    echo -e "${GREEN}✓ Python ${py_version}${NC}"
+}
+
+cleanup_isagellm_packages() {
+    mapfile -t installed_packages < <(
+        "$PYTHON_CMD" - <<'PY'
+import importlib.metadata as metadata
+
+names = set()
+for dist in metadata.distributions():
+    name = dist.metadata.get("Name")
+    if not name:
+        continue
+    lowered = name.strip().lower()
+    if lowered.startswith("isagellm-"):
+        names.add(lowered)
+
+for item in sorted(names):
+    print(item)
+PY
+    )
+
+    if [ "${#installed_packages[@]}" -eq 0 ]; then
+        echo -e "${GREEN}✓ 无需清理（未发现 isagellm-* 已安装包）${NC}"
+        return 0
+    fi
+
+    echo -e "${BLUE}🧹 发现 ${#installed_packages[@]} 个 isagellm-* 包，开始清理...${NC}"
+    local pkg
+    for pkg in "${installed_packages[@]}"; do
+        echo -e "  ${CYAN}- uninstall ${pkg}${NC}"
+        run_with_diagnostics "卸载 ${pkg}" "${PIP_CMD[@]}" uninstall -y "$pkg"
+    done
+    echo -e "${GREEN}✓ isagellm-* 包清理完成${NC}"
+}
+
+install_pypi_baseline() {
+    local deps=(
+        "isagellm-protocol"
+        "isagellm-core"
+        "isagellm-backend"
+    )
+    echo -e "${BLUE}📦 从 PyPI 安装基础依赖: ${deps[*]}${NC}"
+    run_with_diagnostics "安装 PyPI 基线依赖" "${PIP_CMD[@]}" install "${deps[@]}"
+    echo -e "${GREEN}✓ PyPI 基线依赖安装完成${NC}"
+}
+
+install_current_repo() {
+    if [ "$INSTALL_MODE" = "dev" ]; then
+        echo -e "${BLUE}📦 安装当前仓库（editable + dev）${NC}"
+        run_with_diagnostics "安装当前仓库 .[dev]" "${PIP_CMD[@]}" install -e ".[dev]"
+    else
+        echo -e "${BLUE}📦 安装当前仓库（editable）${NC}"
+        run_with_diagnostics "安装当前仓库 ." "${PIP_CMD[@]}" install -e .
+    fi
+    echo -e "${GREEN}✓ 当前仓库安装完成${NC}"
+}
+
+install_local_editable_overrides() {
+    local repos=(
+        "sagellm-protocol"
+        "sagellm-core"
+        "sagellm-backend"
+    )
+
+    local repo_path
+    for repo in "${repos[@]}"; do
+        repo_path="$PARENT_DIR/$repo"
+        if [ -f "$repo_path/pyproject.toml" ]; then
+            echo -e "${BLUE}🔁 本地覆盖: ${repo_path} (editable, --no-deps)${NC}"
+            run_with_diagnostics "本地覆盖 $repo" "${PIP_CMD[@]}" install -e "$repo_path" --no-deps
+            echo -e "${GREEN}✓ 已使用本地仓库覆盖: $repo${NC}"
+        else
+            echo -e "${YELLOW}⚠️ 未找到本地仓库 $repo，保留 PyPI 版本${NC}"
+        fi
+    done
+}
+
+install_hooks() {
+    if [ ! -d "$PROJECT_ROOT/.git/hooks" ]; then
+        echo -e "${YELLOW}⚠ .git/hooks 目录不存在，跳过 hooks 安装${NC}"
+        return 0
+    fi
+
+    if [ -d "$PROJECT_ROOT/hooks" ]; then
+        local installed=0
+        local hook_src
+        for hook_src in "$PROJECT_ROOT/hooks"/*; do
+            local hook_name
+            hook_name=$(basename "$hook_src")
+            local hook_dst
+            hook_dst="$PROJECT_ROOT/.git/hooks/$hook_name"
+            cp "$hook_src" "$hook_dst"
+            chmod +x "$hook_dst"
+            echo -e "  ${GREEN}✓ $hook_name${NC}"
+            installed=$((installed + 1))
+        done
+        echo -e "${GREEN}✓ $installed hook(s) installed${NC}"
+    else
+        echo -e "${YELLOW}⚠ hooks/ directory not found — skipping${NC}"
+    fi
+}
+
+main() {
+    parse_args "$@"
+    detect_python
+
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${BLUE}  sagellm-benchmark — Quick Start${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}Install mode:${NC} ${INSTALL_MODE}"
+    echo ""
+
+    if [ "$DOCTOR" = "true" ]; then
+        run_doctor
+        exit 0
+    fi
+
+    echo -e "${YELLOW}${BOLD}Step 1/5: Checking Python environment${NC}"
+    check_environment
+    echo ""
+
+    echo -e "${YELLOW}${BOLD}Step 2/5: Cleaning existing isagellm-* packages${NC}"
+    if [ "$SKIP_CLEANUP" = "true" ]; then
+        echo -e "${YELLOW}⚠ 已跳过清理（--skip-cleanup）${NC}"
+    else
+        cleanup_isagellm_packages
+    fi
+    echo ""
+
+    echo -e "${YELLOW}${BOLD}Step 3/5: Installing PyPI baseline${NC}"
+    install_pypi_baseline
+    echo ""
+
+    echo -e "${YELLOW}${BOLD}Step 4/5: Installing editable package(s)${NC}"
+    install_current_repo
+    if [ "$INSTALL_MODE" = "dev" ]; then
+        install_local_editable_overrides
+    fi
+    echo ""
+
+    echo -e "${YELLOW}${BOLD}Step 5/5: Installing Git hooks${NC}"
+    if [ "$SKIP_HOOKS" = "true" ]; then
+        echo -e "${YELLOW}⚠ 已跳过 hooks 安装（--skip-hooks）${NC}"
+    else
+        install_hooks
+    fi
+    echo ""
+
+    echo -e "${GREEN}${BOLD}✓ Setup complete!${NC}"
+    echo ""
+    echo -e "${BLUE}${BOLD}Next steps:${NC}"
+    echo -e "  ${CYAN}pytest tests/${NC}                    — run tests"
+    echo -e "  ${CYAN}ruff check src/${NC}                  — lint"
+    echo -e "  ${CYAN}./quickstart.sh --standard${NC}       — install PyPI baseline + local editable"
+    echo -e "  ${CYAN}./quickstart.sh --dev${NC}            — standard + local editable overrides"
+    echo -e "  ${CYAN}./quickstart.sh --doctor${NC}         — diagnose environment"
+    echo ""
+}
+
+main "$@"

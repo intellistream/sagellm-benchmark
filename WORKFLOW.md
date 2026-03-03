@@ -69,6 +69,22 @@ git push origin main-dev
 保持仓库轻量
 ```
 
+### ⚠️ 当 GitHub Actions 因账单/配额被阻塞时
+
+如果出现类似 “job was not started because recent account payments have failed or spending limit needs to be increased” 的提示，
+说明是平台账单限制，不是仓库代码错误。此时可先执行本地兜底流程，避免开发停滞：
+
+```bash
+# 在仓库根目录执行
+bash scripts/local_ci_fallback.sh
+```
+
+该脚本会按 `ci.yml` 的核心顺序运行：
+- pre-commit 全量检查
+- version source guard
+- pytest + coverage（`--cov-fail-under=45`）
+- build + twine check
+
 ---
 
 ## 🔄 完整流程图
@@ -134,6 +150,9 @@ https://huggingface.co/datasets/intellistream/sagellm-benchmark-results
 ### Q5: 如何查看自动化流程的执行状态？
 **A**: 访问 GitHub 仓库的 **Actions** 标签页，查看 "Upload to Hugging Face" 工作流。
 
+### Q6: Actions 被账单限制阻塞时怎么办？
+**A**: 先联系仓库管理员恢复 Actions 账单/配额；在恢复前，执行 `bash scripts/local_ci_fallback.sh` 完成本地等价校验，并在 PR/Issue 中附上本地检查结果。
+
 ---
 
 ## 📚 相关文件
@@ -143,6 +162,7 @@ https://huggingface.co/datasets/intellistream/sagellm-benchmark-results
 | `scripts/aggregate_for_hf.py` | 本地聚合脚本 |
 | `scripts/merge_and_upload.py` | GitHub Actions 合并脚本 |
 | `scripts/upload_to_hf.py` | GitHub Actions 上传脚本 |
+| `scripts/local_ci_fallback.sh` | Actions 不可用时的本地 CI 兜底脚本 |
 | `.github/workflows/upload-to-hf.yml` | 自动化流程配置 |
 | `outputs/` | 本地 benchmark 原始结果（不提交） |
 | `hf_data/` | 聚合后的数据（提交后会被自动清理） |

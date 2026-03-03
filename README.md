@@ -132,15 +132,32 @@ Metrics include latency, throughput, memory, and error rates. See
 git clone https://github.com/intellistream/sagellm-benchmark.git
 cd sagellm-benchmark
 
-# 2. Install in editable mode with dev dependencies
-pip install -e .[dev,all-clients]
+# 2. One-command setup (recommended)
+./quickstart.sh --dev
+
+# Optional: stable/release-oriented dependency baseline
+./quickstart.sh --standard
 ```
+
+Quickstart modes:
+
+- `--standard`: installs baseline dependencies from PyPI, then installs current repo in editable mode.
+- `--dev`: runs `standard` flow, then tries local editable overrides for sibling repos with `--no-deps`.
+- Before install, `quickstart.sh` dynamically cleans existing `isagellm-*` packages for re-entrant setup.
 
 ### Running Tests
 
 ```bash
 pytest tests/
 ```
+
+### Local CI Fallback (when GitHub Actions is blocked)
+
+```bash
+bash scripts/local_ci_fallback.sh
+```
+
+This runs the same core checks as `.github/workflows/ci.yml` locally (pre-commit, version guard, pytest+coverage, build+twine).
 
 ### Performance Regression Check (CI)
 
