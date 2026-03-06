@@ -1,149 +1,165 @@
-# Ascend Engine Benchmark (MVP)
+# Ascend Endpoint Benchmark Guide
 
-本文档说明如何使用 sagellm-benchmark 对 Ascend 后端进行性能测试。
+本文档记录在 Ascend 机器上**可复现**地对比 `vllm-ascend` 与 `sagellm` 的最小流程。
 
-## 📋 MVP 目标
+目标：后续继续做性能比较时，不需要再重新摸索环境安装、启动命令与判活步骤。
 
-提供 Ascend demo 配置，演示如何在 Ascend 设备上运行 Year 1 Demo Contract 的 benchmark 测试。
+## 1. 适用范围
 
-**注意**：MVP 阶段不要求真实 Ascend 硬件，可以使用 CPU fallback 进行演示。
+- 机器具备 Ascend NPU（`npu-smi` 可用）
+- 使用 OpenAI-compatible endpoint 做 live benchmark
+- 对比对象：
+  - `vllm-ascend`
+  - `sagellm serve --benchmark-mode`
 
-## 🚀 快速开始
+## 2. 已验证的软件矩阵
 
-### 1. Python 脚本方式
+当前已验证可跑通对比的版本组合：
 
-```bash
-# 运行 Ascend demo（自动检测硬件可用性）
-cd /home/shuhao/sagellm-benchmark
-python examples/ascend_demo.py
-```
+- CANN toolkit: `8.3.RC2`
+- `torch==2.7.1`
+- `torch-npu==2.7.1`
+- `torchvision==0.22.1`
+- `torchaudio==2.7.1`
+- `transformers==4.57.1`
+- `vllm-ascend==0.11.0`
 
-**行为说明**：
-- 如果 `torch_npu` 可用 → 使用 Ascend 引擎
-- 如果 `torch_npu` 不可用 → 自动 fallback 到 CPU（附带警告信息）
+## 3. 一键安装对比环境
 
-### 2. YAML 配置方式
-
-```bash
-# 使用 YAML 配置文件（未来支持）
-sage-llm benchmark --config examples/ascend_config_example.yaml
-```
-
-## 📁 文件说明
-
-| 文件 | 说明 |
-|------|------|
-| `ascend_demo.py` | Ascend benchmark 示例脚本（Python API） |
-| `ascend_config_example.yaml` | Ascend 配置示例（YAML 格式） |
-
-## ⚙️ 配置说明
-
-### Engine 配置
-
-```yaml
-engine:
-  type: ascend              # 必须指定为 "ascend"
-  device: "ascend:0"        # NPU 设备 ID
-  model_path: "model_path"  # 模型路径
-  max_new_tokens: 128       # 最大生成 tokens
-```
-
-### Workload 配置
-
-遵循 Year 1 Demo Contract 的三段式测试：
-
-1. **Short Input**：128 tokens prompt → 128 tokens output
-2. **Long Input**：2048 tokens prompt → 512 tokens output
-3. **Stress Test**：并发请求，触发 KV 驱逐
-
-### Fallback 配置
-
-```yaml
-fallback:
-  enable: true   # 启用 fallback
-  backend: "cpu" # fallback 到 CPU
-```
-
-## 📊 预期输出
-
-Benchmark 运行后会产出以下指标（符合 Year 1 Demo Contract）：
-
-```json
-{
-  "ttft_ms": 45.2,
-  "tbt_ms": 12.5,
-  "tpot_ms": 12.5,
-  "throughput_tps": 80.0,
-  "peak_mem_mb": 24576,
-  "error_rate": 0.02,
-  "kv_used_tokens": 4096,
-  "kv_used_bytes": 134217728,
-  "prefix_hit_rate": 0.85,
-  "evict_count": 3,
-  "evict_ms": 2.1,
-  "spec_accept_rate": 0.72
-}
-```
-
-## 🔍 Observability
-
-所有操作必须包含以下字段：
-
-- `trace_id`: 请求追踪 ID
-- `request_id`: 请求标识符
-- `engine_id`: 引擎实例标识符
-- `timestamps`: 时间戳（queued_at, scheduled_at, executed_at, completed_at）
-
-## 🧪 测试模式
-
-### Mock 模式（无真实硬件）
-
-当 Ascend 硬件不可用时，系统会自动 fallback 到 CPU：
+推荐直接使用仓库脚本：
 
 ```bash
-⚠️  Ascend backend not available: No module named 'torch_npu'
-   Falling back to CPU for demo purposes...
+cd sagellm-benchmark
+bash scripts/setup_vllm_ascend_compare_env.sh
 ```
 
-这种模式适用于：
-- CI/CD 测试
-- 开发环境调试
-- 无 Ascend 硬件的演示
+默认行为：
 
-### 真实硬件模式
+- 使用 `/opt/miniconda3/envs/bench-vllm-ascend/bin/python`
+- 安装上面这组已验证版本
+- 执行 `pip check`
+- 执行最小 Ascend 烟测（`torch + torch_npu + npu tensor`）
 
-当 `torch_npu` 可用时，会使用真实 Ascend 设备：
+如需覆盖 Python 路径：
 
 ```bash
-🚀 Starting benchmark with Ascend engine...
-   Device: ascend:0
-   Model: sshleifer/tiny-gpt2
+BENCH_VLLM_ASCEND_PY=/path/to/python bash scripts/setup_vllm_ascend_compare_env.sh
 ```
 
-## 📝 开发规范
+## 4. 启动前烟测
 
-遵循 sageLLM 核心开发原则：
+在任意 `vllm-ascend` 启动前，必须先注入 Ascend 运行时环境：
 
-1. **Protocol-First**：配置字段遵循 Protocol v0.1
-2. **CPU-First**：必须支持 CPU fallback
-3. **Fail-Fast**：配置错误必须明确报错
-4. **Observability-First**：所有操作必须产出结构化日志和指标
+```bash
+cd /home/user8/sagellm
+./scripts/sagellm_with_ascend_env.sh /opt/miniconda3/envs/bench-vllm-ascend/bin/python - <<'PY'
+import torch, torch_npu
+print('torch', torch.__version__)
+print('torch_npu', torch_npu.__version__)
+print('npu_available', torch.npu.is_available())
+torch.npu.set_device('npu:0')
+x = torch.ones(1, device='npu')
+print('tensor_ok', (x + 1).cpu().tolist())
+PY
+```
 
-## 🔗 相关文档
+任一步失败都不应继续 benchmark。
 
-- Protocol v0.1: `sagellm-docs/docs/specs/protocol_v0.1.md`
-- Task F 任务书: `sagellm-docs/agent_tasks/ascend_engine_mvp_tasks.md`
-- Year 1 Demo Contract: `sagellm-docs/docs/demo_contract.md`
+## 5. 启动 `vllm-ascend`
 
-## ✅ MVP 验收标准
+```bash
+cd /home/user8/sagellm
+./scripts/sagellm_with_ascend_env.sh \
+  /opt/miniconda3/envs/bench-vllm-ascend/bin/python \
+  -m vllm.entrypoints.openai.api_server \
+  --model Qwen/Qwen2.5-0.5B-Instruct \
+  --host 127.0.0.1 \
+  --port 8000 \
+  > /tmp/vllm_ascend_8000.log 2>&1
+```
 
-- [x] 提供 Ascend demo 配置示例（Python + YAML）
-- [x] 支持自动 fallback 到 CPU
-- [x] 配置符合 Year 1 Demo Contract
-- [x] 文档说明清晰完整
+说明：
 
-## 📞 联系方式
+- 必须通过 `sagellm_with_ascend_env.sh` 注入环境
+- 首次启动可能需要等待模型下载与 ACL graph capture
 
-如有问题，请联系：
-- Task F 负责人：（待补充）
-- sageLLM 团队：IntelliStream
+判活要求：
+
+```bash
+ss -ltnp | grep ':8000'
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/v1/models
+```
+
+## 6. 启动 `sagellm`
+
+用于 benchmark 时，必须显式开启 `--benchmark-mode`，避免 canary 影响启动与测量：
+
+```bash
+cd /home/user8/sagellm
+HF_ENDPOINT=https://hf-mirror.com \
+SAGELLM_ASCEND_TOOLKIT_HOME=/usr/local/Ascend/ascend-toolkit/8.3.RC2 \
+./scripts/sagellm_with_ascend_env.sh \
+  /opt/miniconda3/envs/sage/bin/sagellm serve \
+  --backend ascend \
+  --model Qwen/Qwen2.5-0.5B-Instruct \
+  --host 127.0.0.1 \
+  --port 8901 \
+  --benchmark-mode \
+  > /tmp/sagellm_8901.log 2>&1
+```
+
+判活要求：
+
+```bash
+ss -ltnp | grep ':8901'
+curl http://127.0.0.1:8901/health
+curl http://127.0.0.1:8901/v1/models
+```
+
+## 7. 运行对比 benchmark
+
+```bash
+cd /home/user8/sagellm-benchmark
+BATCH_SIZES=1,2,4 MAX_OUTPUT_TOKENS=64 REQUEST_TIMEOUT=180 \
+scripts/compare_openai_endpoints.sh \
+  http://127.0.0.1:8000/v1 \
+  http://127.0.0.1:8901/v1 \
+  Qwen/Qwen2.5-0.5B-Instruct
+```
+
+输出目录默认在：
+
+```text
+benchmark_results/compare_<timestamp>/
+```
+
+包含：
+
+- `endpoint_a.json`
+- `endpoint_a.md`
+- `endpoint_b.json`
+- `endpoint_b.md`
+- `comparison.md`
+
+## 8. 当前已验证的一组结果
+
+同一模型、同一 batch 档位下，已跑通 live benchmark，对比结论如下：
+
+| Metric | `vllm-ascend` | `sagellm` |
+|---|---:|---:|
+| Avg TTFT (ms) | 165.83 | 541.75 |
+| Avg TBT (ms) | 14.60 | 147.38 |
+| Avg TPS | 52.50 | 8.06 |
+
+该结果说明：
+
+- 两边 endpoint 都已可用
+- `sagellm-benchmark` 已可用于 Ascend 机器上的真实 live 对比
+
+## 9. 注意事项
+
+- 不要把华为 Ascend 安装包（`.run` / `.deb`）提交到仓库；它们体积大，且通常应按上游许可与分发方式获取
+- 推荐把“版本矩阵 + 下载地址 + 脚本”固化到文档和脚本，而不是提交二进制包
+- 若 `vllm-ascend` 首次启动慢，优先等待模型下载和 ACL graph capture 完成，不要过早判定失败
+- 若 `sagellm` benchmark 启动失败，优先确认是否遗漏 `--benchmark-mode`

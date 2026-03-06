@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `docs/ASCEND_BENCHMARK.md` 重写为真实 Ascend endpoint 对比手册，沉淀已验证的 `vllm-ascend` / `sagellm` 启动、判活与 benchmark 流程。
 - quickstart: 新增 Ascend 硬件探测，检测到 `npu-smi` 时自动安装 `vllm-ascend` 并移除 `vllm`；非 Ascend 机器保持安装 `vllm`。
 - `pyproject.toml` optional deps：`full` 不再默认包含 `vllm`，新增显式 extras：`vllm-client` 与 `vllm-ascend-client`。
 - chore(release): bump `isagellm-benchmark` version to `0.5.4.0` and raise minimum bounds for `isagellm-protocol`/`isagellm-core`/`isagellm-backend` to `>=0.5.4.0,<0.6.0`.
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Legacy `YEAR1_WORKLOADS`/`M1_WORKLOADS` retained internally behind `DeprecationWarning` for backward compatibility only.
 
 ### Added
+- 新增 `scripts/setup_vllm_ascend_compare_env.sh`：一键安装已验证版本矩阵（`torch==2.7.1`、`torch-npu==2.7.1`、`transformers==4.57.1`、`vllm-ascend==0.11.0`）并执行最小 Ascend 烟测，便于后续持续复现 `vllm-ascend` vs `sagellm` 性能对比。
 - 新增 `scripts/compare_openai_endpoints.sh`：支持对两个 OpenAI-compatible endpoint（如 `sageLLM` vs `vLLM Ascend`）进行 live E2E 对比评测，并生成 `comparison.md` 汇总；支持通过 `BATCH_SIZES`（默认 `1,2,4`）与 `MAX_OUTPUT_TOKENS` 环境变量控制评测档位。
 - **Issue #23**: Added `scripts/local_ci_fallback.sh` for local equivalent CI checks when GitHub Actions is blocked by billing/quota (runs pre-commit, version guard, pytest+coverage, and build+twine).
 - **Issue #1**: Extended `WorkloadType` with `STREAMING`, `BATCH_INFERENCE`, `MIXED`; added `top_k`, `repetition_penalty`, `stream`, `warmup_rounds`, `concurrency` to `WorkloadConfig`; added predefined workload lists `STREAMING_WORKLOADS`, `BATCH_INFERENCE_WORKLOADS`, `MIXED_WORKLOADS`; extended `get_workloads_by_selector()` with new selectors.

@@ -21,6 +21,15 @@ sageLLM Benchmark is a standardized testing suite for validating LLM inference e
 pip install isagellm-benchmark
 ```
 
+在 Ascend 机器上做 endpoint 对比时，建议额外执行：
+
+```bash
+cd sagellm-benchmark
+bash scripts/setup_vllm_ascend_compare_env.sh
+```
+
+完整流程见 [docs/ASCEND_BENCHMARK.md](docs/ASCEND_BENCHMARK.md)。
+
 ## 5-Minute Quick Start
 
 ### Option 1: One-Click Script (Recommended)

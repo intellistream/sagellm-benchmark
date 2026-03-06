@@ -97,6 +97,11 @@ sagellm-benchmark report --input ./benchmark_results/perf_results.json --plot --
 
 `sagellm-benchmark` 的 `perf --live` 已支持任意 OpenAI-compatible endpoint（包括 vLLM server）。
 
+如需在 Ascend 机器上复现 `vllm-ascend` vs `sagellm` 对比，优先参考：
+
+- [docs/ASCEND_BENCHMARK.md](docs/ASCEND_BENCHMARK.md)
+- [scripts/setup_vllm_ascend_compare_env.sh](scripts/setup_vllm_ascend_compare_env.sh)
+
 1. 分别启动两个服务（例如 `sageLLM` 与 `vLLM Ascend`），确保都提供 `/v1/models` 与 `/v1/chat/completions`。
 2. 运行对比脚本：
 
