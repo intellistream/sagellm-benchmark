@@ -1011,10 +1011,34 @@ def _extract_workload_for_key(entry: dict) -> str:
     return "LEGACY"
 
 
+def _extract_engine_for_key(entry: dict) -> str:
+    """Extract engine name for idempotency key construction."""
+    raw = entry.get("engine") or entry.get("metadata", {}).get("engine")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().lower()
+    if entry.get("sagellm_version"):
+        return "sagellm"
+    return "unknown"
+
+
+def _extract_engine_version_for_key(entry: dict) -> str:
+    """Extract engine version for idempotency key construction."""
+    raw = (
+        entry.get("engine_version")
+        or entry.get("metadata", {}).get("engine_version")
+        or entry.get("sagellm_version")
+    )
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return "unknown"
+
+
 def build_idempotency_key(entry: dict) -> str:
     """Build idempotency key for one leaderboard entry.
 
     Key dimensions:
+    - engine
+    - engine version
     - sagellm version
     - workload
     - model name
@@ -1023,14 +1047,17 @@ def build_idempotency_key(entry: dict) -> str:
     - node count
     - config type
     """
+    cluster = entry.get("cluster") or {}
     parts = [
+        _normalize_key_part(_extract_engine_for_key(entry)),
+        _normalize_key_part(_extract_engine_version_for_key(entry)),
         _normalize_key_part(entry.get("sagellm_version")),
         _normalize_key_part(_extract_workload_for_key(entry)),
         _normalize_key_part(entry.get("model", {}).get("name")),
         _normalize_key_part(entry.get("model", {}).get("precision")),
         _normalize_key_part(entry.get("hardware", {}).get("chip_model")),
         _normalize_key_part(entry.get("hardware", {}).get("chip_count")),
-        _normalize_key_part(entry.get("cluster", {}).get("node_count", 1)),
+        _normalize_key_part(cluster.get("node_count", 1)),
         _normalize_key_part(entry.get("config_type")),
     ]
     return "|".join(parts)

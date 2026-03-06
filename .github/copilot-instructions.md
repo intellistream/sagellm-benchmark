@@ -17,6 +17,30 @@ For Python packages in this repository, version must have exactly one hardcoded 
 
 When asked to update package version, change only `_version.py`.
 
+## Ascend Endpoint Benchmarking Reminder (Mandatory)
+
+- In Ascend environments with only `vllm-ascend` installed, `python -m vllm.entrypoints.openai.api_server` may fail because `vllm` package/module is absent.
+- Before assuming an endpoint is `vllm-ascend`, always verify with runtime checks:
+   - `ss -ltnp | grep -E ':<port>'` to map port → process
+   - `curl /health`, `curl /info`, `curl /v1/models` to identify engine capability/shape
+- Do not label a benchmark as `vllm-ascend` unless the serving process is confirmed to be a real `vllm-ascend` server process.
+
+### train05 / current Ascend host practical rules
+
+- Always inject Ascend runtime before startup via wrapper:
+   - `cd /home/user8/sagellm`
+   - `./scripts/sagellm_with_ascend_env.sh <python-or-server-command>`
+- Run preflight smoke test in the exact target env before server startup:
+   - `import torch, torch_npu`
+   - `torch.npu.is_available()`
+   - `torch.npu.set_device('npu:0')` and one small NPU tensor op
+- If `python -m vllm.entrypoints.openai.api_server` fails with module-missing/entrypoint-mismatch, treat it as environment/package-layout issue first; do not continue benchmark with an unverified server.
+- Startup success criteria are mandatory (all pass):
+   - Port bind: `ss -ltnp | grep -E ':<port>'`
+   - Process fingerprint: `pgrep -af 'vllm|vllm-ascend|EngineCore'`
+   - API health/model endpoints return valid payloads
+- If any criterion fails, mark run as invalid and stop comparison output generation.
+
 
 ## Git Hooks（强制 - Mandatory）
 

@@ -38,8 +38,11 @@ pip install isagellm-benchmark
 For specific backend support:
 
 ```bash
-# With vLLM support
+# With vLLM support (non-Ascend)
 pip install isagellm-benchmark[vllm-client]
+
+# With vLLM Ascend support (Ascend machines)
+pip install isagellm-benchmark[vllm-ascend-client]
 
 # With LMDeploy support
 pip install isagellm-benchmark[lmdeploy-client]

@@ -8,10 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- quickstart: 新增 Ascend 硬件探测，检测到 `npu-smi` 时自动安装 `vllm-ascend` 并移除 `vllm`；非 Ascend 机器保持安装 `vllm`。
+- `pyproject.toml` optional deps：`full` 不再默认包含 `vllm`，新增显式 extras：`vllm-client` 与 `vllm-ascend-client`。
 - chore(release): bump `isagellm-benchmark` version to `0.5.4.0` and raise minimum bounds for `isagellm-protocol`/`isagellm-core`/`isagellm-backend` to `>=0.5.4.0,<0.6.0`.
+- `scripts/compare_openai_endpoints.sh` 参数改为可选：零参数默认比较 `http://127.0.0.1:8902/v1` 与 `http://127.0.0.1:8901/v1`，避免 Ascend-only 场景下依赖 `vllm.entrypoints` 才能运行对比。
+- leaderboard 导出新增 `engine` / `engine_version` 字段（含 metadata 同步字段），并将 `upload-hf` 幂等 key 扩展为 engine-aware，避免不同引擎同配置结果互相覆盖。
 
 ### Fixed
 - quickstart.sh: replace `cp` with `ln -sf` for git hooks installation to fix "are the same file" error when hooks are already symlinks
+- `upload-hf` 幂等键构造修复：当 leaderboard 条目 `cluster=null` 时不再触发 `AttributeError`，可正常上传单机结果。
 
 ### Changed
 - **Cleanup**: Removed all "year1"/`m1`/`short_input`/`long_input`/`stress_test` references from user-facing CLI, README, QUICKSTART, and examples; Q1-Q8 (`--workload all`) is now the canonical benchmark suite.

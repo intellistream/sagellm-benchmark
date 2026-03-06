@@ -131,9 +131,6 @@ def export_for_comparison(results_path: Path):
         print(f"结果文件不存在: {summary_file}")
         return
 
-    with open(summary_file) as f:
-        data = json.load(f)
-
     # 转换为对比格式
     comparison_data = {
         "framework": "sageLLM",

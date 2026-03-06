@@ -222,6 +222,29 @@ install_local_editable_overrides() {
     done
 }
 
+ascend_hw_detected() {
+    if ! command -v npu-smi >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local npu_info
+    npu_info="$(npu-smi info 2>/dev/null || true)"
+    [[ -n "$npu_info" && "$npu_info" == *"NPU"* ]]
+}
+
+install_optional_vllm_client() {
+    if ascend_hw_detected; then
+        echo -e "${BLUE}📦 检测到 Ascend，安装 vllm-ascend（并移除 vllm）${NC}"
+        run_with_diagnostics "卸载 vllm" "${PIP_CMD[@]}" uninstall -y vllm || true
+        run_with_diagnostics "安装 vllm-ascend" "${PIP_CMD[@]}" install "vllm-ascend>=0.11.0"
+        echo -e "${GREEN}✓ 已安装 vllm-ascend（Ascend 模式）${NC}"
+    else
+        echo -e "${BLUE}📦 未检测到 Ascend，安装 vllm（通用模式）${NC}"
+        run_with_diagnostics "安装 vllm" "${PIP_CMD[@]}" install "vllm>=0.2.0"
+        echo -e "${GREEN}✓ 已安装 vllm（通用模式）${NC}"
+    fi
+}
+
 install_hooks() {
     if [ ! -d "$PROJECT_ROOT/.git/hooks" ]; then
         echo -e "${YELLOW}⚠ .git/hooks 目录不存在，跳过 hooks 安装${NC}"
@@ -285,7 +308,11 @@ main() {
     fi
     echo ""
 
-    echo -e "${YELLOW}${BOLD}Step 5/5: Installing Git hooks${NC}"
+    echo -e "${YELLOW}${BOLD}Step 5/6: Installing optional vLLM client${NC}"
+    install_optional_vllm_client
+    echo ""
+
+    echo -e "${YELLOW}${BOLD}Step 6/6: Installing Git hooks${NC}"
     if [ "$SKIP_HOOKS" = "true" ]; then
         echo -e "${YELLOW}⚠ 已跳过 hooks 安装（--skip-hooks）${NC}"
     else

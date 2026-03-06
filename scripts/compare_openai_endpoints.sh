@@ -2,21 +2,60 @@
 
 set -euo pipefail
 
-if [[ $# -lt 2 ]]; then
-  echo "Usage: $0 <endpoint_a> <endpoint_b> [model]"
-  echo "Example: $0 http://127.0.0.1:8901/v1 http://127.0.0.1:8000/v1 Qwen/Qwen2.5-0.5B-Instruct"
-  exit 1
-fi
+DEFAULT_ENDPOINT_A="${DEFAULT_ENDPOINT_A:-http://127.0.0.1:8902/v1}"
+DEFAULT_ENDPOINT_B="${DEFAULT_ENDPOINT_B:-http://127.0.0.1:8901/v1}"
 
-ENDPOINT_A="$1"
-ENDPOINT_B="$2"
-MODEL="${3:-Qwen/Qwen2.5-0.5B-Instruct}"
+usage() {
+    echo "Usage: $0 [endpoint_a endpoint_b [model]]"
+    echo ""
+    echo "No-arg mode (recommended on Ascend-only machines):"
+    echo "  endpoint_a=$DEFAULT_ENDPOINT_A"
+    echo "  endpoint_b=$DEFAULT_ENDPOINT_B"
+    echo "  model=Qwen/Qwen2.5-0.5B-Instruct"
+    echo ""
+    echo "Examples:"
+    echo "  $0"
+    echo "  $0 Qwen/Qwen2.5-0.5B-Instruct"
+    echo "  $0 http://127.0.0.1:8902/v1 http://127.0.0.1:8901/v1"
+    echo "  $0 http://127.0.0.1:8902/v1 http://127.0.0.1:8901/v1 Qwen/Qwen2.5-0.5B-Instruct"
+}
+
+case "$#" in
+    0)
+        ENDPOINT_A="$DEFAULT_ENDPOINT_A"
+        ENDPOINT_B="$DEFAULT_ENDPOINT_B"
+        MODEL="Qwen/Qwen2.5-0.5B-Instruct"
+        ;;
+    1)
+        ENDPOINT_A="$DEFAULT_ENDPOINT_A"
+        ENDPOINT_B="$DEFAULT_ENDPOINT_B"
+        MODEL="$1"
+        ;;
+    2)
+        ENDPOINT_A="$1"
+        ENDPOINT_B="$2"
+        MODEL="Qwen/Qwen2.5-0.5B-Instruct"
+        ;;
+    3)
+        ENDPOINT_A="$1"
+        ENDPOINT_B="$2"
+        MODEL="$3"
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac
 OUT_DIR="${OUT_DIR:-./benchmark_results/compare_$(date +%Y%m%d_%H%M%S)}"
 MAX_OUTPUT_TOKENS="${MAX_OUTPUT_TOKENS:-64}"
 REQUEST_TIMEOUT="${REQUEST_TIMEOUT:-120}"
 BATCH_SIZES_CSV="${BATCH_SIZES:-1,2,4}"
 
 mkdir -p "$OUT_DIR"
+
+echo "Using endpoint_a=$ENDPOINT_A"
+echo "Using endpoint_b=$ENDPOINT_B"
+echo "Using model=$MODEL"
 
 run_one() {
   local name="$1"

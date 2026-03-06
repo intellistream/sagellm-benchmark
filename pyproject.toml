@@ -36,10 +36,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Local development dependencies (NOT used in CI — vllm/lmdeploy are too large)
+# Local development dependencies (NOT used in CI — heavy optional backends)
 full = [
-    "vllm>=0.2.0",
     "lmdeploy>=0.2.0",
+]
+vllm-client = [
+    "vllm>=0.2.0",
+]
+vllm-ascend-client = [
+    "vllm-ascend>=0.11.0",
 ]
 dev = [
     # dev includes [full] — no need for a separate extras install
