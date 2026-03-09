@@ -55,15 +55,16 @@
 
 ## 📝 CHANGELOG 与自动发布规则（强制）
 
-**🚨 每次解决 issue 必须更新 CHANGELOG！每次 commit 自动触发发布！**
+**🚨 每次解决 issue 必须更新 CHANGELOG！推送默认不发布，发布必须显式触发！**
 
 ### 更新规则
 
 - ✅ **必须** 每次解决一个 issue 时更新 `CHANGELOG.md`
 - ✅ **必须** 在 `[Unreleased]` 部分添加本次改动
 - ✅ **必须** 使用正确的分类（Added/Changed/Fixed/Removed）
-- ✅ **每次** `git push` 到 `main-dev` 通过 pre-push hook 自动触发 PyPI 发布
-- ✅ **自动发布** 会同步更新版本号并生成 release tag
+- ✅ **每次** `git push` 到 `main-dev` 默认**不会**触发 PyPI 发布
+- ✅ **只有显式使用** `git push -o sagellm-publish origin main-dev` 才会触发发布；若 push option 不可用，则使用 `SAGELLM_PUBLISH_ON_PUSH=1 git push origin main-dev`
+- ✅ **显式触发发布时** 会同步更新版本号并生成 release tag
 - ✅ **发布时** `[Unreleased]` 自动替换为版本号与日期
 
 ### CHANGELOG 格式
@@ -102,8 +103,8 @@ vim CHANGELOG.md
 git add .
 git commit -m "fix: resolve issue #123"
 
-# 4. 推送到 main-dev（自动触发 PyPI 发布）
-git push origin main-dev  # pre-push hook 自动发布
+# 4. 如需发布，显式带发布 flag 推送到 main-dev
+git push -o sagellm-publish origin main-dev
 ```
 
 ## 📦 PyPI 发布流程
