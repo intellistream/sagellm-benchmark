@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `hooks/pre-push` 默认不再因检测到发布凭证而自动发布；只有显式使用 `git push -o sagellm-publish origin main-dev` 或 `SAGELLM_PUBLISH_ON_PUSH=1 git push origin main-dev` 时才会触发发布。
+- `hooks/post-commit` 默认不再在每次提交后自动 bump 版本；普通 `git push` 也不再触发 PyPI 版本冲突检查，只有显式发布时才会处理版本号。
 - `docs/ASCEND_BENCHMARK.md` 重写为真实 Ascend endpoint 对比手册，沉淀已验证的 `vllm-ascend` / `sagellm` 启动、判活与 benchmark 流程。
 - quickstart: 新增 Ascend 硬件探测，检测到 `npu-smi` 时自动安装 `vllm-ascend` 并移除 `vllm`；非 Ascend 机器保持安装 `vllm`。
 - `pyproject.toml` optional deps：`full` 不再默认包含 `vllm`，新增显式 extras：`vllm-client` 与 `vllm-ascend-client`。
