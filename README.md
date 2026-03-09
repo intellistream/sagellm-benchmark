@@ -22,6 +22,7 @@ New here? See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide.
 - One-command benchmark runner
 - Extensible backend support
 - Performance benchmark CLI (`perf`) for operator and E2E benchmark baselines
+- Canonical `compare` entrypoint for sagellm vs vllm/lmdeploy endpoint benchmarking
 
 ## Dependencies
 
@@ -39,17 +40,20 @@ For specific backend support:
 
 ```bash
 # With vLLM support (non-Ascend)
-pip install isagellm-benchmark[vllm-client]
+pip install 'isagellm-benchmark[vllm-client]'
 
 # With vLLM Ascend support (Ascend machines)
-pip install isagellm-benchmark[vllm-ascend-client]
+pip install 'isagellm-benchmark[vllm-ascend-client]'
 
 # With LMDeploy support
-pip install isagellm-benchmark[lmdeploy-client]
-
-# With OpenAI/Gateway support
-pip install isagellm-benchmark[openai-client]
+pip install 'isagellm-benchmark[lmdeploy-client]'
 ```
+
+Dependency policy:
+
+- `pyproject.toml` extras are the single source of truth for third-party compare clients.
+- `quickstart.sh` and setup scripts are convenience layers that install those extras and, when needed, add a validated runtime matrix on top.
+- Cross-engine comparison belongs on the benchmark side only; `sagellm-core` is not a third-party engine compare entry.
 
 ## Quick Start
 
@@ -66,6 +70,18 @@ sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --fo
 # Run migrated performance benchmarks
 sagellm-benchmark perf --type operator --device cpu
 sagellm-benchmark perf --type e2e --model Qwen/Qwen2-7B-Instruct --batch-size 1 --batch-size 4
+
+# Compare multiple OpenAI-compatible endpoints through benchmark clients
+sagellm-benchmark compare \
+   --target sagellm=http://127.0.0.1:8902/v1 \
+   --target vllm=http://127.0.0.1:8901/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct
+
+# Convenience profile for the standard sageLLM vs vLLM layout
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:8000/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct
 
 # Generate charts (PNG/PDF, dark theme)
 sagellm-benchmark perf --type e2e --plot --plot-format png --plot-format pdf --theme dark
@@ -95,37 +111,57 @@ sagellm-benchmark report --input ./benchmark_results/perf_results.json --plot --
 
 ## Ascend vLLM 对比评测
 
-`sagellm-benchmark` 的 `perf --live` 已支持任意 OpenAI-compatible endpoint（包括 vLLM server）。
+`sagellm-benchmark` 的 `compare` 是唯一推荐的跨引擎对比入口。`perf --live` 继续保留为单 endpoint 性能采集能力；真正的 sagellm vs vllm/lmdeploy 对比统一通过 `compare` 或 benchmark client 完成。
+
+如果当前目标就是标准的 `sageLLM vs vLLM` 对比，也可以使用便利入口：
+
+```bash
+sagellm-benchmark vllm-compare install-ascend
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:8000/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct
+```
 
 如需在 Ascend 机器上复现 `vllm-ascend` vs `sagellm` 对比，优先参考：
 
 - [docs/ASCEND_BENCHMARK.md](docs/ASCEND_BENCHMARK.md)
 - [scripts/setup_vllm_ascend_compare_env.sh](scripts/setup_vllm_ascend_compare_env.sh)
 
+其中 `pyproject.toml` 里的 benchmark extras 是依赖声明的唯一事实来源；
+`scripts/setup_vllm_ascend_compare_env.sh` 只是在其之上附加一套已验证的 Ascend 版本矩阵，作为便利层而非新的依赖入口。
+
+如果直接运行 `./quickstart.sh`，脚本也会先安装匹配当前硬件的 benchmark extra，再视场景叠加便利层安装步骤。
+
 1. 分别启动两个服务（例如 `sageLLM` 与 `vLLM Ascend`），确保都提供 `/v1/models` 与 `/v1/chat/completions`。
-2. 运行对比脚本：
+2. 运行对比命令：
 
 ```bash
-cd sagellm-benchmark
-chmod +x scripts/compare_openai_endpoints.sh
-scripts/compare_openai_endpoints.sh \
-   http://127.0.0.1:8901/v1 \
-   http://127.0.0.1:8000/v1 \
-   Qwen/Qwen2.5-0.5B-Instruct
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:8000/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct
 
-# 可选：指定 batch 档位（默认 1,2,4）
-BATCH_SIZES=1,2,4 MAX_OUTPUT_TOKENS=64 \
-scripts/compare_openai_endpoints.sh \
-   http://127.0.0.1:8901/v1 \
-   http://127.0.0.1:8000/v1 \
-   Qwen/Qwen2.5-0.5B-Instruct
+# 兼容脚本仍可用，但只是对新 CLI 的薄包装
+scripts/compare_openai_endpoints.sh http://127.0.0.1:8000/v1 http://127.0.0.1:8901/v1
+```
+
+等价的正式 CLI 用法：
+
+```bash
+sagellm-benchmark compare \
+   --target sagellm=http://127.0.0.1:8901/v1 \
+   --target vllm=http://127.0.0.1:8000/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --batch-size 1 --batch-size 2 --batch-size 4 \
+   --max-output-tokens 64
 ```
 
 输出会写入 `benchmark_results/compare_*/`，包含：
 
-- `endpoint_a.json/.md`
-- `endpoint_b.json/.md`
+- `<target>.json/.md`
 - `comparison.md`（汇总 TTFT/TBT/TPS 差异）
+- `comparison.json`（结构化对比摘要）
 
 ## Workloads
 
@@ -158,7 +194,14 @@ Metrics include latency, throughput, memory, and error rates. See
 ## Backends
 
 - **cpu**: CPU inference via HuggingFace Transformers (requires `--model`)
-- **planned**: lmdeploy, vllm (Clients implemented, CLI integration pending)
+- **compare targets**: `sagellm` / `vllm` / `lmdeploy` 通过 `compare` 或 benchmark clients 接入，而不是通过 `run --backend`
+
+## Compare Policy
+
+- `sagellm-benchmark compare` 是 sagellm 与第三方引擎对比的唯一推荐入口。
+- 优先使用 OpenAI-compatible endpoint 做对比；若第三方服务不提供兼容 endpoint，则通过 `sagellm_benchmark.clients.*` Python client 接入。
+- 第三方引擎依赖、启动便利脚本、endpoint 验活和 live 指标采集都收敛在 `sagellm-benchmark`，不再要求 `sagellm-core` 承担此职责。
+- `./quickstart.sh` 会自动补装匹配当前硬件的 vLLM compare extra；Ascend 机器会在 extra 之上再叠加验证过的版本矩阵。
 
 ## Development
 
@@ -180,6 +223,7 @@ Quickstart modes:
 
 - `--standard`: installs baseline dependencies from PyPI, then installs current repo in editable mode.
 - `--dev`: runs `standard` flow, then tries local editable overrides for sibling repos with `--no-deps`.
+- quickstart also installs the matching benchmark compare extra for the current machine; extras remain the dependency source of truth.
 - Before install, `quickstart.sh` dynamically cleans existing `isagellm-*` packages for re-entrant setup.
 
 ### Running Tests

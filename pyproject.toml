@@ -36,9 +36,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Local development dependencies (NOT used in CI — heavy optional backends)
-full = [
+# Canonical dependency declarations for comparison clients live here.
+# Helper scripts may pin a validated runtime matrix, but they do not replace
+# these extras as the package-level source of truth.
+openai-client = [
+    "openai>=1.0.0",
+    "httpx>=0.24.0",
+]
+lmdeploy-client = [
     "lmdeploy>=0.2.0",
+    "httpx>=0.24.0",
+]
+# Local development dependencies (NOT used in CI — keep vLLM variants explicit)
+full = [
+    "isagellm-benchmark[lmdeploy-client]",
 ]
 vllm-client = [
     "vllm>=0.2.0",
@@ -47,7 +58,8 @@ vllm-ascend-client = [
     "vllm-ascend>=0.11.0",
 ]
 dev = [
-    # dev includes [full] — no need for a separate extras install
+    # dev includes common optional comparison clients; install vLLM variants
+    # explicitly when that environment is actually needed.
     "isagellm-benchmark[full]",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

@@ -63,7 +63,10 @@ class GatewayClient(BenchmarkClient):
         try:
             from openai import AsyncOpenAI
         except ImportError:
-            raise ImportError("openai package not installed. Install with: pip install openai")
+            raise ImportError(
+                "openai dependency missing. Reinstall benchmark base package with: "
+                "pip install -U isagellm-benchmark"
+            )
 
         self.base_url = base_url
         self.api_key = api_key

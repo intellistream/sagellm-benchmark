@@ -19,6 +19,14 @@ When asked to update package version, change only `_version.py`.
 
 ## Ascend Endpoint Benchmarking Reminder (Mandatory)
 
+- `sagellm-benchmark` owns third-party engine comparison responsibilities: dependency extras, convenience install scripts, endpoint liveness checks, and live metrics collection all stay on the benchmark side.
+- For the standard `sageLLM vs vLLM` workflow, prefer the dedicated benchmark CLI:
+   - `sagellm-benchmark vllm-compare install-ascend`
+   - `sagellm-benchmark vllm-compare run --sagellm-url <url> --vllm-url <url> --model <model>`
+- `sagellm-benchmark compare` remains the generic multi-endpoint entrypoint; `vllm-compare` is the thin, semantic wrapper for the common vLLM comparison path.
+- `scripts/setup_vllm_ascend_compare_env.sh` and `scripts/compare_openai_endpoints.sh` are compatibility wrappers only. Do not add new primary logic there when the same behavior belongs in the CLI.
+- Benchmark dependency declarations must live in `pyproject.toml` extras. Scripts may pin a validated environment matrix, but must not become an alternate source of truth for compare-client dependencies.
+
 - In Ascend environments with only `vllm-ascend` installed, `python -m vllm.entrypoints.openai.api_server` may fail because `vllm` package/module is absent.
 - Before assuming an endpoint is `vllm-ascend`, always verify with runtime checks:
    - `ss -ltnp | grep -E ':<port>'` to map port → process
@@ -27,6 +35,8 @@ When asked to update package version, change only `_version.py`.
 
 ### train05 / current Ascend host practical rules
 
+- Prefer `sagellm-benchmark vllm-compare install-ascend` over directly invoking setup shell scripts in new instructions, examples, or automation.
+- Prefer `sagellm-benchmark vllm-compare run` over passing anonymous `endpoint_a/endpoint_b` style arguments in new instructions, examples, or automation.
 - Always inject Ascend runtime before startup via wrapper:
    - `cd /home/user8/sagellm`
    - `./scripts/sagellm_with_ascend_env.sh <python-or-server-command>`

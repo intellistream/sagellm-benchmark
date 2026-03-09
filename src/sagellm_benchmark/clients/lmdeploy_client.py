@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_INSTALL_HINT = "pip install -U 'isagellm-benchmark[lmdeploy-client]'"
+
 
 class LMDeployClient(BenchmarkClient):
     """Client for LMDeploy backend.
@@ -68,8 +70,8 @@ class LMDeployClient(BenchmarkClient):
                 import httpx
             except ImportError:
                 raise ImportError(
-                    "httpx package required for LMDeploy server mode. "
-                    "Install with: pip install httpx"
+                    "LMDeploy server mode requires the benchmark compare-client extra. "
+                    f"Install with: {_INSTALL_HINT}"
                 )
             self.client = httpx.AsyncClient(base_url=base_url, timeout=timeout)
             logger.info(f"LMDeploy client (server mode): {base_url}")
@@ -83,7 +85,8 @@ class LMDeployClient(BenchmarkClient):
                 from lmdeploy import GenerationConfig, pipeline
             except ImportError:
                 raise ImportError(
-                    "lmdeploy package required for local mode. Install with: pip install lmdeploy"
+                    "LMDeploy local mode requires the benchmark compare-client extra. "
+                    f"Install with: {_INSTALL_HINT}"
                 )
 
             self.pipeline = pipeline(model_path, tp=tp)

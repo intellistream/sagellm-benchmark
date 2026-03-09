@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `hooks/pre-push` 默认不再因检测到发布凭证而自动发布；只有显式使用 `git push -o sagellm-publish origin main-dev` 或 `SAGELLM_PUBLISH_ON_PUSH=1 git push origin main-dev` 时才会触发发布。
 - `hooks/post-commit` 默认不再在每次提交后自动 bump 版本；普通 `git push` 也不再触发 PyPI 版本冲突检查，只有显式发布时才会处理版本号。
+- 新增更干净的 `sagellm-benchmark vllm-compare` CLI 分组：`install-ascend` 负责安装已验证的 Ascend 对比环境，`run` 负责标准 `sageLLM vs vLLM` endpoint 对比；原有 shell 脚本收敛为兼容包装层。
+- benchmark quickstart now installs the matching compare extra (`vllm-client` or `vllm-ascend-client`) before any convenience-layer package pinning, so runtime setup stays aligned with `pyproject.toml` as the dependency source of truth.
+- README / client guides now explicitly state that benchmark owns third-party engine comparison, `compare` is the canonical live entrypoint, and quickstart is only a convenience wrapper over benchmark extras.
+- `sagellm-benchmark compare` 现在作为 benchmark 侧唯一正式跨引擎对比入口；`perf --live` 仅保留单 endpoint 性能采集职责。
+- `scripts/compare_openai_endpoints.sh` 现在只是 `sagellm-benchmark compare` 的便利 wrapper，正式对比逻辑统一收敛到 benchmark CLI。
+- `clients/vllm_client.py` 的 server mode 改为复用通用 `GatewayClient`，避免在 vLLM 专用 client 中重复维护 OpenAI-compatible 请求、判活与指标采集逻辑。
+- benchmark compare-client dependency policy: `pyproject.toml` extras are now the canonical source for third-party benchmark integrations; convenience scripts only layer validated install pins on top.
+- `scripts/setup_vllm_ascend_compare_env.sh` now installs the local `vllm-ascend-client` benchmark extra before applying the validated Ascend version matrix.
+- benchmark client/docs install guidance now points users to benchmark extras (`vllm-client`, `vllm-ascend-client`, `lmdeploy-client`) instead of ad hoc raw package installs.
 - `docs/ASCEND_BENCHMARK.md` 重写为真实 Ascend endpoint 对比手册，沉淀已验证的 `vllm-ascend` / `sagellm` 启动、判活与 benchmark 流程。
 - quickstart: 新增 Ascend 硬件探测，检测到 `npu-smi` 时自动安装 `vllm-ascend` 并移除 `vllm`；非 Ascend 机器保持安装 `vllm`。
 - `pyproject.toml` optional deps：`full` 不再默认包含 `vllm`，新增显式 extras：`vllm-client` 与 `vllm-ascend-client`。
@@ -27,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Legacy `YEAR1_WORKLOADS`/`M1_WORKLOADS` retained internally behind `DeprecationWarning` for backward compatibility only.
 
 ### Added
+- `sagellm-benchmark compare`：新增统一对多个 OpenAI-compatible endpoint 做 live 评测的 CLI 入口，自动产出 `<target>.json/.md` 与 `comparison.json/.md`。
 - 新增 `scripts/setup_vllm_ascend_compare_env.sh`：一键安装已验证版本矩阵（`torch==2.7.1`、`torch-npu==2.7.1`、`transformers==4.57.1`、`vllm-ascend==0.11.0`）并执行最小 Ascend 烟测，便于后续持续复现 `vllm-ascend` vs `sagellm` 性能对比。
 - 新增 `scripts/compare_openai_endpoints.sh`：支持对两个 OpenAI-compatible endpoint（如 `sageLLM` vs `vLLM Ascend`）进行 live E2E 对比评测，并生成 `comparison.md` 汇总；支持通过 `BATCH_SIZES`（默认 `1,2,4`）与 `MAX_OUTPUT_TOKENS` 环境变量控制评测档位。
 - **Issue #23**: Added `scripts/local_ci_fallback.sh` for local equivalent CI checks when GitHub Actions is blocked by billing/quota (runs pre-commit, version guard, pytest+coverage, and build+twine).

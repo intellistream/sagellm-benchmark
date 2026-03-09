@@ -26,12 +26,13 @@
 
 ## 3. 一键安装对比环境
 
-推荐直接使用仓库脚本：
+推荐直接使用 CLI：
 
 ```bash
-cd sagellm-benchmark
-bash scripts/setup_vllm_ascend_compare_env.sh
+sagellm-benchmark vllm-compare install-ascend
 ```
+
+兼容脚本 `scripts/setup_vllm_ascend_compare_env.sh` 仍保留，但只是对上述 CLI 的薄包装。
 
 默认行为：
 
@@ -43,7 +44,7 @@ bash scripts/setup_vllm_ascend_compare_env.sh
 如需覆盖 Python 路径：
 
 ```bash
-BENCH_VLLM_ASCEND_PY=/path/to/python bash scripts/setup_vllm_ascend_compare_env.sh
+BENCH_VLLM_ASCEND_PY=/path/to/python sagellm-benchmark vllm-compare install-ascend
 ```
 
 ## 4. 启动前烟测
@@ -120,8 +121,16 @@ curl http://127.0.0.1:8901/v1/models
 ## 7. 运行对比 benchmark
 
 ```bash
-cd /home/user8/sagellm-benchmark
 BATCH_SIZES=1,2,4 MAX_OUTPUT_TOKENS=64 REQUEST_TIMEOUT=180 \
+sagellm-benchmark vllm-compare run \
+  --vllm-url http://127.0.0.1:8000/v1 \
+  --sagellm-url http://127.0.0.1:8901/v1 \
+  --model Qwen/Qwen2.5-0.5B-Instruct
+```
+
+兼容脚本仍可用：
+
+```bash
 scripts/compare_openai_endpoints.sh \
   http://127.0.0.1:8000/v1 \
   http://127.0.0.1:8901/v1 \
@@ -136,11 +145,12 @@ benchmark_results/compare_<timestamp>/
 
 包含：
 
-- `endpoint_a.json`
-- `endpoint_a.md`
-- `endpoint_b.json`
-- `endpoint_b.md`
+- `sagellm.json`
+- `sagellm.md`
+- `vllm.json`
+- `vllm.md`
 - `comparison.md`
+- `comparison.json`
 
 ## 8. 当前已验证的一组结果
 

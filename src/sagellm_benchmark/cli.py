@@ -7,6 +7,8 @@ import hashlib
 import json
 import os
 import re
+import shlex
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
@@ -18,6 +20,263 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 console = Console()
+
+
+def _slugify_filename(value: str) -> str:
+    """Convert a label to a filesystem-safe filename stem."""
+    sanitized = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip())
+    sanitized = sanitized.strip("-")
+    return sanitized or "target"
+
+
+def _parse_compare_target(spec: str) -> tuple[str, str]:
+    """Parse compare target spec in LABEL=URL format."""
+    if "=" not in spec:
+        raise click.BadParameter(
+            f"Invalid target '{spec}'. Expected LABEL=URL, for example sagellm=http://127.0.0.1:8000/v1"
+        )
+
+    label, url = spec.split("=", 1)
+    label = label.strip()
+    url = url.strip()
+    if not label or not url:
+        raise click.BadParameter(
+            f"Invalid target '{spec}'. Both label and URL are required in LABEL=URL format."
+        )
+    return label, url
+
+
+def _build_compare_summary(target_results: list[dict[str, object]]) -> dict[str, object]:
+    """Build a comparison summary using the first target as baseline."""
+    if not target_results:
+        return {"baseline": None, "targets": []}
+
+    baseline = target_results[0]
+    baseline_summary = baseline["summary"]
+    baseline_ttft = float(baseline_summary["avg_ttft_ms"])
+    baseline_tbt = float(baseline_summary["avg_tbt_ms"])
+    baseline_tps = float(baseline_summary["avg_throughput_tps"])
+
+    summary_rows: list[dict[str, object]] = []
+    for target in target_results:
+        target_summary = target["summary"]
+        summary_rows.append(
+            {
+                "label": target["label"],
+                "url": target["url"],
+                "rows": int(target_summary["total_rows"]),
+                "avg_ttft_ms": float(target_summary["avg_ttft_ms"]),
+                "avg_tbt_ms": float(target_summary["avg_tbt_ms"]),
+                "avg_throughput_tps": float(target_summary["avg_throughput_tps"]),
+                "delta_vs_baseline": {
+                    "ttft_ms": float(target_summary["avg_ttft_ms"]) - baseline_ttft,
+                    "tbt_ms": float(target_summary["avg_tbt_ms"]) - baseline_tbt,
+                    "throughput_tps": float(target_summary["avg_throughput_tps"]) - baseline_tps,
+                },
+            }
+        )
+
+    return {
+        "baseline": baseline["label"],
+        "targets": summary_rows,
+    }
+
+
+def _format_compare_markdown(compare_result: dict[str, object]) -> str:
+    """Render markdown summary for a compare run."""
+    lines = [
+        "# Endpoint Comparison Report",
+        "",
+        f"- Model: {compare_result['model']}",
+        f"- Baseline: {compare_result['baseline']}",
+        f"- Batch sizes: {', '.join(str(size) for size in compare_result['batch_sizes'])}",
+        "",
+        "| Target | Rows | Avg TTFT (ms) | Avg TBT (ms) | Avg TPS | Delta TTFT | Delta TBT | Delta TPS |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+
+    for target in compare_result["targets"]:
+        delta = target["delta_vs_baseline"]
+        lines.append(
+            "| {label} | {rows} | {ttft:.2f} | {tbt:.2f} | {tps:.2f} | {d_ttft:+.2f} | {d_tbt:+.2f} | {d_tps:+.2f} |".format(
+                label=target["label"],
+                rows=target["rows"],
+                ttft=float(target["avg_ttft_ms"]),
+                tbt=float(target["avg_tbt_ms"]),
+                tps=float(target["avg_throughput_tps"]),
+                d_ttft=float(delta["ttft_ms"]),
+                d_tbt=float(delta["tbt_ms"]),
+                d_tps=float(delta["throughput_tps"]),
+            )
+        )
+
+    lines.extend(["", "## Targets", ""])
+    for target in compare_result["targets"]:
+        lines.append(f"- {target['label']}: {target['url']}")
+
+    return "\n".join(lines)
+
+
+def _create_compare_output_dir(output_dir: str | None, prefix: str = "compare") -> Path:
+    """Create the output directory for compare-style commands."""
+    return (
+        Path(output_dir)
+        if output_dir
+        else Path("benchmark_results") / f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    )
+
+
+def _run_compare_command(
+    *,
+    targets: tuple[str, ...],
+    model: str,
+    batch_sizes: tuple[int, ...],
+    api_key: str,
+    request_timeout: float,
+    server_wait_s: float,
+    max_seq_len: int | None,
+    max_output_tokens: int | None,
+    output_dir: str | None,
+    header: str = "sageLLM Endpoint Compare",
+) -> Path:
+    """Run a multi-endpoint compare and write artifacts."""
+    if len(targets) < 2:
+        raise click.BadParameter("Repeat --target at least twice to compare multiple endpoints.")
+
+    parsed_targets = [_parse_compare_target(spec) for spec in targets]
+    compare_output_dir = _create_compare_output_dir(output_dir)
+    compare_output_dir.mkdir(parents=True, exist_ok=True)
+
+    console.print(f"[bold cyan]{header}[/bold cyan]")
+    console.print(f"Model: {model}")
+    console.print(f"Targets: {len(parsed_targets)}")
+    console.print(f"Output: {compare_output_dir}\n")
+
+    from sagellm_benchmark.performance.model_benchmarks import (
+        run_e2e_model_benchmarks,
+        summarize_e2e_rows,
+    )
+
+    target_results: list[dict[str, object]] = []
+
+    for label, url in parsed_targets:
+        console.print(f"[bold]Running target:[/bold] {label} -> {url}")
+        rows = run_e2e_model_benchmarks(
+            models=[model],
+            batch_sizes=list(batch_sizes),
+            precisions=["live"],
+            simulate=False,
+            backend_url=url,
+            api_key=api_key,
+            request_timeout=request_timeout,
+            server_wait_s=server_wait_s,
+            max_seq_len=max_seq_len,
+            max_output_tokens=max_output_tokens,
+        )
+        summary = summarize_e2e_rows(rows)
+        payload = {
+            "kind": "e2e",
+            "simulate": False,
+            "mode": "live-compare",
+            "label": label,
+            "url": url,
+            "models": [model],
+            "batch_sizes": list(batch_sizes),
+            "precisions": ["live"],
+            "summary": summary,
+            "rows": rows,
+        }
+
+        file_stem = _slugify_filename(label)
+        json_path = compare_output_dir / f"{file_stem}.json"
+        md_path = compare_output_dir / f"{file_stem}.md"
+
+        with open(json_path, "w") as f:
+            json.dump(payload, f, indent=2)
+        with open(md_path, "w") as f:
+            f.write(_format_e2e_markdown(payload) + "\n")
+
+        target_results.append(
+            {
+                "label": label,
+                "url": url,
+                "summary": summary,
+                "json": str(json_path),
+                "markdown": str(md_path),
+            }
+        )
+        console.print(
+            f"[green]✓[/green] {label}: TTFT={summary['avg_ttft_ms']:.2f}ms, "
+            f"TBT={summary['avg_tbt_ms']:.2f}ms, TPS={summary['avg_throughput_tps']:.2f}"
+        )
+
+    compare_result = {
+        "kind": "compare",
+        "model": model,
+        "batch_sizes": list(batch_sizes),
+        **_build_compare_summary(target_results),
+    }
+
+    comparison_json = compare_output_dir / "comparison.json"
+    comparison_md = compare_output_dir / "comparison.md"
+    with open(comparison_json, "w") as f:
+        json.dump(compare_result, f, indent=2)
+    with open(comparison_md, "w") as f:
+        f.write(_format_compare_markdown(compare_result) + "\n")
+
+    console.print("\n[bold green]✓ Compare completed[/bold green]")
+    console.print(f"Comparison JSON: {comparison_json}")
+    console.print(f"Comparison Markdown: {comparison_md}")
+    return compare_output_dir
+
+
+def _resolve_local_benchmark_root() -> Path | None:
+    """Return the local repo root when running from a source checkout."""
+    candidate = Path(__file__).resolve().parents[2]
+    if (candidate / "pyproject.toml").exists():
+        return candidate
+    return None
+
+
+def _resolve_benchmark_extra_install_target(extra_name: str) -> str:
+    """Resolve the install target for a benchmark extra."""
+    local_root = _resolve_local_benchmark_root()
+    if local_root is not None:
+        return f"{local_root}[{extra_name}]"
+    return f"isagellm-benchmark[{extra_name}]"
+
+
+def _run_checked_command(command: list[str], input_text: str | None = None) -> None:
+    """Run a command and raise a click-friendly error on failure."""
+    console.print(f"[dim]$ {' '.join(shlex.quote(part) for part in command)}[/dim]")
+    kwargs: dict[str, object] = {"check": True}
+    if input_text is not None:
+        kwargs["input"] = input_text
+        kwargs["text"] = True
+
+    try:
+        subprocess.run(command, **kwargs)
+    except subprocess.CalledProcessError as exc:
+        raise click.ClickException(
+            f"Command failed with exit code {exc.returncode}: {' '.join(command)}"
+        ) from exc
+
+
+def _get_vllm_compare_smoke_test_script() -> str:
+    """Return the Ascend smoke test script used by install-ascend."""
+    return """import torch, torch_npu
+
+print('torch', torch.__version__)
+print('torch_npu', torch_npu.__version__)
+print('npu_available', torch.npu.is_available())
+
+if not torch.npu.is_available():
+    raise RuntimeError('torch.npu.is_available() == False')
+
+torch.npu.set_device('npu:0')
+x = torch.ones(1, device='npu')
+print('tensor_ok', (x + 1).cpu().tolist())
+"""
 
 
 def normalize_model_name(model_path: str) -> str:
@@ -706,6 +965,255 @@ def perf(
     console.print("\n[bold green]✓ Performance benchmark completed[/bold green]")
     console.print(f"JSON: {output_json_path}")
     console.print(f"Markdown: {output_md_path}")
+
+
+@main.command()
+@click.option(
+    "--target",
+    "targets",
+    multiple=True,
+    required=True,
+    help=(
+        "Comparison target in LABEL=URL format. Repeat to compare multiple OpenAI-compatible "
+        "endpoints, e.g. --target sagellm=http://127.0.0.1:8000/v1 --target vllm=http://127.0.0.1:8000/v1"
+    ),
+)
+@click.option(
+    "--model",
+    type=str,
+    required=True,
+    help="Requested model name for the benchmark run.",
+)
+@click.option(
+    "--batch-size",
+    "batch_sizes",
+    multiple=True,
+    type=int,
+    default=(1, 2, 4),
+    show_default=True,
+    help="Batch sizes to benchmark. Repeat for multiple values.",
+)
+@click.option(
+    "--api-key",
+    type=str,
+    default="sagellm-benchmark",
+    show_default=True,
+    help="API key used for all targets.",
+)
+@click.option(
+    "--request-timeout",
+    type=float,
+    default=120.0,
+    show_default=True,
+    help="Per-request timeout in seconds.",
+)
+@click.option(
+    "--server-wait",
+    "server_wait_s",
+    type=float,
+    default=30.0,
+    show_default=True,
+    help="Max seconds to wait for each server to become ready.",
+)
+@click.option(
+    "--max-seq-len",
+    "max_seq_len",
+    type=int,
+    default=None,
+    help="Override the detected maximum sequence length for all targets.",
+)
+@click.option(
+    "--max-output-tokens",
+    "max_output_tokens",
+    type=int,
+    default=None,
+    help="Hard cap on output tokens for each request.",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(),
+    default=None,
+    help="Directory to save compare artifacts (default: benchmark_results/compare_<timestamp>).",
+)
+def compare(
+    targets: tuple[str, ...],
+    model: str,
+    batch_sizes: tuple[int, ...],
+    api_key: str,
+    request_timeout: float,
+    server_wait_s: float,
+    max_seq_len: int | None,
+    max_output_tokens: int | None,
+    output_dir: str | None,
+) -> None:
+    """Compare multiple inference endpoints through benchmark clients only."""
+    _run_compare_command(
+        targets=targets,
+        model=model,
+        batch_sizes=batch_sizes,
+        api_key=api_key,
+        request_timeout=request_timeout,
+        server_wait_s=server_wait_s,
+        max_seq_len=max_seq_len,
+        max_output_tokens=max_output_tokens,
+        output_dir=output_dir,
+    )
+
+
+@main.group("vllm-compare")
+def vllm_compare() -> None:
+    """Convenience commands for vLLM compare environment setup and runs."""
+    pass
+
+
+@vllm_compare.command("install-ascend")
+@click.option(
+    "--python-bin",
+    envvar="BENCH_VLLM_ASCEND_PY",
+    default="/opt/miniconda3/envs/bench-vllm-ascend/bin/python",
+    show_default=True,
+    help="Python executable for the vLLM Ascend compare environment.",
+)
+@click.option(
+    "--sagellm-root",
+    envvar="SAGELLM_ROOT",
+    default="/home/user8/sagellm",
+    show_default=True,
+    help="Path to the sagellm repo that provides scripts/sagellm_with_ascend_env.sh.",
+)
+def vllm_compare_install_ascend(python_bin: str, sagellm_root: str) -> None:
+    """Install the validated vLLM Ascend compare environment and run smoke checks."""
+    python_path = Path(python_bin).expanduser()
+    wrapper_path = Path(sagellm_root).expanduser() / "scripts" / "sagellm_with_ascend_env.sh"
+
+    console.print("[bold cyan]vLLM Ascend Compare Setup[/bold cyan]")
+    console.print(f"Python: {python_path}")
+    console.print(f"sagellm root: {Path(sagellm_root).expanduser()}")
+
+    if not python_path.is_file() or not os.access(python_path, os.X_OK):
+        raise click.ClickException(f"Python executable not found or not executable: {python_path}")
+
+    if not wrapper_path.is_file() or not os.access(wrapper_path, os.X_OK):
+        raise click.ClickException(f"Ascend wrapper not found or not executable: {wrapper_path}")
+
+    benchmark_target = _resolve_benchmark_extra_install_target("vllm-ascend-client")
+    pinned_packages = [
+        "torch==2.7.1",
+        "torch-npu==2.7.1",
+        "torchvision==0.22.1",
+        "torchaudio==2.7.1",
+        "transformers==4.57.1",
+        "vllm-ascend==0.11.0",
+    ]
+
+    _run_checked_command([str(python_path), "-m", "pip", "install", "-U", benchmark_target])
+    _run_checked_command([str(python_path), "-m", "pip", "install", "-U", *pinned_packages])
+    _run_checked_command([str(python_path), "-m", "pip", "check"])
+    _run_checked_command(
+        [str(wrapper_path), str(python_path), "-"],
+        input_text=_get_vllm_compare_smoke_test_script(),
+    )
+
+    console.print("\n[bold green]✓ vLLM Ascend compare environment is ready[/bold green]")
+
+
+@vllm_compare.command("run")
+@click.option(
+    "--vllm-url",
+    envvar="VLLM_COMPARE_VLLM_URL",
+    default="http://127.0.0.1:8000/v1",
+    show_default=True,
+    help="vLLM OpenAI-compatible endpoint URL.",
+)
+@click.option(
+    "--sagellm-url",
+    envvar="VLLM_COMPARE_SAGELLM_URL",
+    default="http://127.0.0.1:8901/v1",
+    show_default=True,
+    help="sageLLM OpenAI-compatible endpoint URL.",
+)
+@click.option(
+    "--model",
+    type=str,
+    default="Qwen/Qwen2.5-0.5B-Instruct",
+    show_default=True,
+    help="Requested model name for the benchmark run.",
+)
+@click.option(
+    "--batch-size",
+    "batch_sizes",
+    multiple=True,
+    type=int,
+    default=(1, 2, 4),
+    show_default=True,
+    help="Batch sizes to benchmark. Repeat for multiple values.",
+)
+@click.option(
+    "--api-key",
+    type=str,
+    default="sagellm-benchmark",
+    show_default=True,
+    help="API key used for both endpoints.",
+)
+@click.option(
+    "--request-timeout",
+    type=float,
+    default=120.0,
+    show_default=True,
+    help="Per-request timeout in seconds.",
+)
+@click.option(
+    "--server-wait",
+    "server_wait_s",
+    type=float,
+    default=30.0,
+    show_default=True,
+    help="Max seconds to wait for each endpoint to become ready.",
+)
+@click.option(
+    "--max-seq-len",
+    type=int,
+    default=None,
+    help="Override the detected maximum sequence length for both endpoints.",
+)
+@click.option(
+    "--max-output-tokens",
+    type=int,
+    default=64,
+    show_default=True,
+    help="Hard cap on output tokens for each request.",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(),
+    default=None,
+    help="Directory to save compare artifacts (default: benchmark_results/compare_<timestamp>).",
+)
+def vllm_compare_run(
+    vllm_url: str,
+    sagellm_url: str,
+    model: str,
+    batch_sizes: tuple[int, ...],
+    api_key: str,
+    request_timeout: float,
+    server_wait_s: float,
+    max_seq_len: int | None,
+    max_output_tokens: int,
+    output_dir: str | None,
+) -> None:
+    """Run the standard sageLLM vs vLLM endpoint comparison."""
+    _run_compare_command(
+        targets=(f"sagellm={sagellm_url}", f"vllm={vllm_url}"),
+        model=model,
+        batch_sizes=batch_sizes,
+        api_key=api_key,
+        request_timeout=request_timeout,
+        server_wait_s=server_wait_s,
+        max_seq_len=max_seq_len,
+        max_output_tokens=max_output_tokens,
+        output_dir=output_dir,
+        header="sageLLM vs vLLM Compare",
+    )
 
 
 @main.command()

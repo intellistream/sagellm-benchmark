@@ -24,6 +24,49 @@ This will:
 
 ## CLI Reference
 
+### `sagellm-benchmark compare`
+
+统一比较多个 OpenAI-compatible endpoint。这是 sagellm vs vllm/lmdeploy 的正式 benchmark 入口。
+
+**Options:**
+
+- `--target`: 对比对象，格式 `LABEL=URL`
+  - 示例：`sagellm=http://127.0.0.1:8902/v1`
+  - 至少重复两次
+
+- `--model`: 请求时使用的模型名
+
+- `--batch-size`: 重复指定多个 batch 档位
+
+- `--request-timeout`: 单请求超时秒数
+
+- `--server-wait`: endpoint 判活最长等待秒数
+
+- `--max-seq-len`: 覆盖自动探测的最大上下文窗口
+
+- `--max-output-tokens`: 限制每请求输出长度
+
+- `--output-dir`: 结果输出目录
+
+**Examples:**
+
+```bash
+# Compare sagellm vs vllm
+sagellm-benchmark compare \
+  --target sagellm=http://127.0.0.1:8902/v1 \
+  --target vllm=http://127.0.0.1:8901/v1 \
+  --model Qwen/Qwen2.5-0.5B-Instruct
+
+# Compare three engines with explicit batch sizes
+sagellm-benchmark compare \
+  --target sagellm=http://127.0.0.1:8902/v1 \
+  --target vllm=http://127.0.0.1:8901/v1 \
+  --target lmdeploy=http://127.0.0.1:23333/v1 \
+  --model Qwen/Qwen2.5-0.5B-Instruct \
+  --batch-size 1 --batch-size 2 --batch-size 4 \
+  --max-output-tokens 64
+```
+
 ### `sagellm-benchmark run`
 
 Run benchmark workloads.
