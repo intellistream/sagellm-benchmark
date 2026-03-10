@@ -8,11 +8,14 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import click
 from rich.console import Console
@@ -44,6 +47,23 @@ def _parse_compare_target(spec: str) -> tuple[str, str]:
             f"Invalid target '{spec}'. Both label and URL are required in LABEL=URL format."
         )
     return label, url
+
+
+def _parse_label_command(spec: str) -> tuple[str, str]:
+    """Parse a LABEL=COMMAND mapping."""
+    if "=" not in spec:
+        raise click.BadParameter(
+            f"Invalid command mapping '{spec}'. Expected LABEL=COMMAND, for example sagellm='sagellm serve --port 8901'"
+        )
+
+    label, command = spec.split("=", 1)
+    label = label.strip()
+    command = command.strip()
+    if not label or not command:
+        raise click.BadParameter(
+            f"Invalid command mapping '{spec}'. Both label and command are required in LABEL=COMMAND format."
+        )
+    return label, command
 
 
 def _build_compare_summary(target_results: list[dict[str, object]]) -> dict[str, object]:
@@ -126,6 +146,366 @@ def _create_compare_output_dir(output_dir: str | None, prefix: str = "compare") 
     )
 
 
+def _is_local_target_url(url: str) -> bool:
+    """Return whether a compare target points at a local endpoint."""
+    parsed = urlparse(url)
+    return parsed.hostname in {"127.0.0.1", "localhost", "0.0.0.0", "::1"}
+
+
+def _discover_local_target_processes(
+    parsed_targets: list[tuple[str, str]],
+) -> list[dict[str, object]]:
+    """Find listening local processes for compare target ports."""
+    listeners = subprocess.run(
+        ["ss", "-ltnpH"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    by_pid: dict[int, dict[str, object]] = {}
+    for label, url in parsed_targets:
+        if not _is_local_target_url(url):
+            continue
+
+        parsed = urlparse(url)
+        if parsed.port is None:
+            continue
+
+        for line in listeners.stdout.splitlines():
+            if not re.search(rf":{parsed.port}\b", line):
+                continue
+
+            for pid_text in re.findall(r"pid=(\d+)", line):
+                pid = int(pid_text)
+                entry = by_pid.setdefault(
+                    pid,
+                    {
+                        "pid": pid,
+                        "labels": set(),
+                        "urls": set(),
+                        "ports": set(),
+                    },
+                )
+                entry["labels"].add(label)
+                entry["urls"].add(url)
+                entry["ports"].add(parsed.port)
+
+    for entry in by_pid.values():
+        try:
+            proc = subprocess.run(
+                ["ps", "-p", str(entry["pid"]), "-o", "command="],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            entry["command"] = proc.stdout.strip()
+        except subprocess.CalledProcessError:
+            entry["command"] = ""
+
+        entry["labels"] = sorted(entry["labels"])
+        entry["urls"] = sorted(entry["urls"])
+        entry["ports"] = sorted(entry["ports"])
+
+    return sorted(by_pid.values(), key=lambda item: int(item["pid"]))
+
+
+def _endpoint_is_ready(
+    url: str,
+    *,
+    api_key: str,
+    request_timeout: float,
+    probe_timeout: float = 5.0,
+) -> bool:
+    """Check whether an OpenAI-compatible endpoint is ready."""
+    from sagellm_benchmark.clients.openai_client import GatewayClient
+
+    client = GatewayClient(base_url=url, api_key=api_key, timeout=request_timeout)
+    return asyncio.run(client.health_check(timeout=probe_timeout))
+
+
+def _wait_for_endpoint_ready(
+    url: str,
+    *,
+    api_key: str,
+    request_timeout: float,
+    server_wait_s: float,
+) -> bool:
+    """Wait for an endpoint to become ready within the given timeout."""
+    deadline = time.time() + server_wait_s
+    while time.time() < deadline:
+        if _endpoint_is_ready(
+            url,
+            api_key=api_key,
+            request_timeout=request_timeout,
+        ):
+            return True
+        remaining = deadline - time.time()
+        if remaining > 0:
+            time.sleep(min(2.0, remaining))
+    return False
+
+
+def _process_is_alive(pid: int) -> bool:
+    """Check whether a process is still alive."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _terminate_processes(
+    pids: list[int],
+    *,
+    grace_period_s: float = 3.0,
+) -> dict[str, list[int]]:
+    """Terminate processes with TERM first, then KILL if needed."""
+    terminated: list[int] = []
+    killed: list[int] = []
+    failed: list[int] = []
+
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            terminated.append(pid)
+        except OSError:
+            failed.append(pid)
+
+    deadline = time.time() + grace_period_s
+    while time.time() < deadline:
+        remaining = [pid for pid in pids if _process_is_alive(pid)]
+        if not remaining:
+            break
+        time.sleep(0.1)
+
+    for pid in pids:
+        if pid in failed:
+            continue
+        if not _process_is_alive(pid):
+            if pid not in terminated:
+                terminated.append(pid)
+            continue
+        try:
+            os.kill(pid, signal.SIGKILL)
+            killed.append(pid)
+        except ProcessLookupError:
+            if pid not in terminated:
+                terminated.append(pid)
+        except OSError:
+            failed.append(pid)
+
+    return {
+        "terminated": sorted(set(terminated)),
+        "killed": sorted(set(killed)),
+        "failed": sorted(set(failed)),
+    }
+
+
+def _terminate_process_groups(
+    pgids: list[int],
+    *,
+    grace_period_s: float = 3.0,
+) -> dict[str, list[int]]:
+    """Terminate managed process groups started by benchmark compare."""
+    terminated: list[int] = []
+    killed: list[int] = []
+    failed: list[int] = []
+
+    for pgid in pgids:
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+        except ProcessLookupError:
+            terminated.append(pgid)
+        except OSError:
+            failed.append(pgid)
+
+    deadline = time.time() + grace_period_s
+    while time.time() < deadline:
+        remaining = [pgid for pgid in pgids if _process_is_alive(pgid)]
+        if not remaining:
+            break
+        time.sleep(0.1)
+
+    for pgid in pgids:
+        if pgid in failed:
+            continue
+        if not _process_is_alive(pgid):
+            if pgid not in terminated:
+                terminated.append(pgid)
+            continue
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+            killed.append(pgid)
+        except ProcessLookupError:
+            if pgid not in terminated:
+                terminated.append(pgid)
+        except OSError:
+            failed.append(pgid)
+
+    return {
+        "terminated": sorted(set(terminated)),
+        "killed": sorted(set(killed)),
+        "failed": sorted(set(failed)),
+    }
+
+
+def _maybe_start_local_targets(
+    *,
+    parsed_targets: list[tuple[str, str]],
+    target_commands: dict[str, str],
+    api_key: str,
+    request_timeout: float,
+    server_wait_s: float,
+) -> list[dict[str, object]]:
+    """Start local targets when commands are provided and endpoints are not ready."""
+    managed_processes: list[dict[str, object]] = []
+
+    for label, url in parsed_targets:
+        command = target_commands.get(label)
+        if not command:
+            continue
+        if not _is_local_target_url(url):
+            raise click.ClickException(
+                f"Auto-start is only supported for local targets. '{label}' points to {url}."
+            )
+
+        if _endpoint_is_ready(url, api_key=api_key, request_timeout=request_timeout):
+            console.print(f"[dim]{label} already running at {url}; skipping start command.[/dim]")
+            continue
+
+        if not command.strip():
+            raise click.ClickException(f"Start command for target '{label}' is empty.")
+
+        console.print(f"[bold]Starting target:[/bold] {label} -> {command}")
+        process = subprocess.Popen(
+            ["/bin/bash", "-lc", command],
+            start_new_session=True,
+        )
+        managed_processes.append(
+            {
+                "pid": process.pid,
+                "pgid": process.pid,
+                "label": label,
+                "url": url,
+                "command": command,
+                "started_by_benchmark": True,
+            }
+        )
+
+        if not _wait_for_endpoint_ready(
+            url,
+            api_key=api_key,
+            request_timeout=request_timeout,
+            server_wait_s=server_wait_s,
+        ):
+            _terminate_process_groups([int(item["pgid"]) for item in managed_processes])
+            raise click.ClickException(
+                f"Started target '{label}' but endpoint {url} did not become ready within {server_wait_s:.0f}s."
+            )
+
+        console.print(f"[green]✓[/green] {label} became ready at {url}")
+
+    return managed_processes
+
+
+def _should_prompt_cleanup(prompt_cleanup: bool | None) -> bool:
+    """Return whether compare should prompt to clean up local endpoints."""
+    if prompt_cleanup is not None:
+        return prompt_cleanup
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _maybe_prompt_cleanup_local_targets(
+    parsed_targets: list[tuple[str, str]],
+    *,
+    prompt_cleanup: bool | None,
+    managed_processes: list[dict[str, object]] | None = None,
+) -> None:
+    """Ask whether to terminate local target processes after compare completes."""
+    if not _should_prompt_cleanup(prompt_cleanup):
+        return
+
+    local_processes = _discover_local_target_processes(parsed_targets)
+    managed_processes = managed_processes or []
+    managed_by_pid = {
+        int(process["pid"]): {
+            "pid": int(process["pid"]),
+            "labels": [str(process["label"])],
+            "urls": [str(process["url"])],
+            "ports": [],
+            "command": str(process["command"]),
+            "pgid": int(process["pgid"]),
+            "started_by_benchmark": True,
+        }
+        for process in managed_processes
+    }
+    for process in local_processes:
+        pid = int(process["pid"])
+        if pid in managed_by_pid:
+            managed = managed_by_pid[pid]
+            managed["labels"] = sorted(set(managed["labels"]) | set(process["labels"]))
+            managed["urls"] = sorted(set(managed["urls"]) | set(process["urls"]))
+            managed["ports"] = sorted(set(managed["ports"]) | set(process["ports"]))
+        else:
+            managed_by_pid[pid] = process
+
+    local_processes = sorted(managed_by_pid.values(), key=lambda item: int(item["pid"]))
+    if not local_processes:
+        return
+
+    console.print("\n[bold yellow]Local benchmark targets still running[/bold yellow]")
+    for process in local_processes:
+        labels = ", ".join(process["labels"])
+        ports = ", ".join(str(port) for port in process["ports"])
+        command = process.get("command") or "<unknown command>"
+        ownership = " [started by benchmark]" if process.get("started_by_benchmark") else ""
+        console.print(
+            f"- pid={process['pid']}{ownership} labels={labels} ports={ports}\n  command: {command}"
+        )
+
+    if not click.confirm("Kill detected local target processes now?", default=False):
+        console.print("[yellow]Leaving local benchmark target processes running.[/yellow]")
+        return
+
+    managed_pgids = [int(process["pgid"]) for process in local_processes if process.get("pgid")]
+    unmanaged_pids = [
+        int(process["pid"])
+        for process in local_processes
+        if not process.get("started_by_benchmark")
+    ]
+    managed_result = (
+        _terminate_process_groups(managed_pgids)
+        if managed_pgids
+        else {
+            "terminated": [],
+            "killed": [],
+            "failed": [],
+        }
+    )
+    unmanaged_result = (
+        _terminate_processes(unmanaged_pids)
+        if unmanaged_pids
+        else {
+            "terminated": [],
+            "killed": [],
+            "failed": [],
+        }
+    )
+    console.print(
+        "[green]Cleanup complete[/green]: "
+        "terminated="
+        f"{sorted(managed_result['terminated'] + unmanaged_result['terminated'])} "
+        "killed="
+        f"{sorted(managed_result['killed'] + unmanaged_result['killed'])} "
+        "failed="
+        f"{sorted(managed_result['failed'] + unmanaged_result['failed'])}"
+    )
+
+
 def _run_compare_command(
     *,
     targets: tuple[str, ...],
@@ -137,6 +517,8 @@ def _run_compare_command(
     max_seq_len: int | None,
     max_output_tokens: int | None,
     output_dir: str | None,
+    prompt_cleanup: bool | None,
+    target_commands: dict[str, str] | None = None,
     header: str = "sageLLM Endpoint Compare",
 ) -> Path:
     """Run a multi-endpoint compare and write artifacts."""
@@ -144,6 +526,13 @@ def _run_compare_command(
         raise click.BadParameter("Repeat --target at least twice to compare multiple endpoints.")
 
     parsed_targets = [_parse_compare_target(spec) for spec in targets]
+    managed_processes = _maybe_start_local_targets(
+        parsed_targets=parsed_targets,
+        target_commands=target_commands or {},
+        api_key=api_key,
+        request_timeout=request_timeout,
+        server_wait_s=server_wait_s,
+    )
     compare_output_dir = _create_compare_output_dir(output_dir)
     compare_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -227,6 +616,11 @@ def _run_compare_command(
     console.print("\n[bold green]✓ Compare completed[/bold green]")
     console.print(f"Comparison JSON: {comparison_json}")
     console.print(f"Comparison Markdown: {comparison_md}")
+    _maybe_prompt_cleanup_local_targets(
+        parsed_targets,
+        prompt_cleanup=prompt_cleanup,
+        managed_processes=managed_processes,
+    )
     return compare_output_dir
 
 
@@ -979,6 +1373,12 @@ def perf(
     ),
 )
 @click.option(
+    "--target-command",
+    "target_commands",
+    multiple=True,
+    help="Optional local start command in LABEL=COMMAND format. If the target endpoint is not ready, benchmark will start it before compare.",
+)
+@click.option(
     "--model",
     type=str,
     required=True,
@@ -1035,8 +1435,14 @@ def perf(
     default=None,
     help="Directory to save compare artifacts (default: benchmark_results/compare_<timestamp>).",
 )
+@click.option(
+    "--prompt-cleanup/--no-prompt-cleanup",
+    default=None,
+    help="Prompt to terminate local target processes after compare completes. Defaults to on in interactive terminals only.",
+)
 def compare(
     targets: tuple[str, ...],
+    target_commands: tuple[str, ...],
     model: str,
     batch_sizes: tuple[int, ...],
     api_key: str,
@@ -1045,10 +1451,12 @@ def compare(
     max_seq_len: int | None,
     max_output_tokens: int | None,
     output_dir: str | None,
+    prompt_cleanup: bool | None,
 ) -> None:
     """Compare multiple inference endpoints through benchmark clients only."""
     _run_compare_command(
         targets=targets,
+        target_commands=dict(_parse_label_command(spec) for spec in target_commands),
         model=model,
         batch_sizes=batch_sizes,
         api_key=api_key,
@@ -1057,6 +1465,7 @@ def compare(
         max_seq_len=max_seq_len,
         max_output_tokens=max_output_tokens,
         output_dir=output_dir,
+        prompt_cleanup=prompt_cleanup,
     )
 
 
@@ -1126,11 +1535,23 @@ def vllm_compare_install_ascend(python_bin: str, sagellm_root: str) -> None:
     help="vLLM OpenAI-compatible endpoint URL.",
 )
 @click.option(
+    "--start-vllm-cmd",
+    type=str,
+    default=None,
+    help="Optional local command to start the vLLM endpoint when it is not already running.",
+)
+@click.option(
     "--sagellm-url",
     envvar="VLLM_COMPARE_SAGELLM_URL",
     default="http://127.0.0.1:8901/v1",
     show_default=True,
     help="sageLLM OpenAI-compatible endpoint URL.",
+)
+@click.option(
+    "--start-sagellm-cmd",
+    type=str,
+    default=None,
+    help="Optional local command to start the sageLLM endpoint when it is not already running.",
 )
 @click.option(
     "--model",
@@ -1189,9 +1610,16 @@ def vllm_compare_install_ascend(python_bin: str, sagellm_root: str) -> None:
     default=None,
     help="Directory to save compare artifacts (default: benchmark_results/compare_<timestamp>).",
 )
+@click.option(
+    "--prompt-cleanup/--no-prompt-cleanup",
+    default=None,
+    help="Prompt to terminate local target processes after compare completes. Defaults to on in interactive terminals only.",
+)
 def vllm_compare_run(
     vllm_url: str,
+    start_vllm_cmd: str | None,
     sagellm_url: str,
+    start_sagellm_cmd: str | None,
     model: str,
     batch_sizes: tuple[int, ...],
     api_key: str,
@@ -1200,10 +1628,19 @@ def vllm_compare_run(
     max_seq_len: int | None,
     max_output_tokens: int,
     output_dir: str | None,
+    prompt_cleanup: bool | None,
 ) -> None:
     """Run the standard sageLLM vs vLLM endpoint comparison."""
     _run_compare_command(
         targets=(f"sagellm={sagellm_url}", f"vllm={vllm_url}"),
+        target_commands={
+            key: value
+            for key, value in {
+                "sagellm": start_sagellm_cmd,
+                "vllm": start_vllm_cmd,
+            }.items()
+            if value
+        },
         model=model,
         batch_sizes=batch_sizes,
         api_key=api_key,
@@ -1212,6 +1649,7 @@ def vllm_compare_run(
         max_seq_len=max_seq_len,
         max_output_tokens=max_output_tokens,
         output_dir=output_dir,
+        prompt_cleanup=prompt_cleanup,
         header="sageLLM vs vLLM Compare",
     )
 

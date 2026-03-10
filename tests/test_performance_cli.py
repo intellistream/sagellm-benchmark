@@ -208,3 +208,208 @@ def test_vllm_compare_run_generates_files(monkeypatch):
         assert payload["kind"] == "compare"
         assert payload["baseline"] == "sagellm"
         assert [target["label"] for target in payload["targets"]] == ["sagellm", "vllm"]
+
+
+def test_compare_passes_target_commands(monkeypatch):
+    """compare should forward optional target start commands to the execution layer."""
+
+    captured: dict[str, object] = {}
+
+    def fake_run_compare_command(**kwargs):
+        captured.update(kwargs)
+        return Path("compare_out")
+
+    monkeypatch.setattr("sagellm_benchmark.cli._run_compare_command", fake_run_compare_command)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "compare",
+            "--target",
+            "sagellm=http://127.0.0.1:8902/v1",
+            "--target",
+            "vllm=http://127.0.0.1:8000/v1",
+            "--target-command",
+            "sagellm=sagellm serve --port 8902",
+            "--target-command",
+            "vllm=vllm serve --port 8000",
+            "--model",
+            "Qwen/Qwen2.5-0.5B-Instruct",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["target_commands"] == {
+        "sagellm": "sagellm serve --port 8902",
+        "vllm": "vllm serve --port 8000",
+    }
+
+
+def test_vllm_compare_run_passes_start_commands(monkeypatch):
+    """vllm-compare run should map convenience start flags into target command wiring."""
+
+    captured: dict[str, object] = {}
+
+    def fake_run_compare_command(**kwargs):
+        captured.update(kwargs)
+        return Path("compare_out")
+
+    monkeypatch.setattr("sagellm_benchmark.cli._run_compare_command", fake_run_compare_command)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "vllm-compare",
+            "run",
+            "--sagellm-url",
+            "http://127.0.0.1:8901/v1",
+            "--vllm-url",
+            "http://127.0.0.1:8000/v1",
+            "--start-sagellm-cmd",
+            "sagellm serve --port 8901",
+            "--start-vllm-cmd",
+            "vllm serve --port 8000",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["target_commands"] == {
+        "sagellm": "sagellm serve --port 8901",
+        "vllm": "vllm serve --port 8000",
+    }
+
+
+def test_compare_prompt_cleanup_kills_local_targets(monkeypatch):
+    """compare should offer to kill local target processes when requested."""
+
+    def fake_run_e2e_model_benchmarks(**kwargs):
+        return [
+            {
+                "model": kwargs["models"][0],
+                "precision": "live",
+                "scenario": "short_b1",
+                "batch_size": 1,
+                "ttft_ms": 10.0,
+                "tbt_ms": 2.0,
+                "throughput_tps": 100.0,
+                "latency_p50_ms": 20.0,
+                "latency_p95_ms": 25.0,
+                "latency_p99_ms": 30.0,
+                "memory_mb": 0.0,
+                "mode": "live",
+            }
+        ]
+
+    monkeypatch.setattr(
+        "sagellm_benchmark.performance.model_benchmarks.run_e2e_model_benchmarks",
+        fake_run_e2e_model_benchmarks,
+    )
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._discover_local_target_processes",
+        lambda parsed_targets: [
+            {
+                "pid": 1234,
+                "labels": ["sagellm"],
+                "urls": ["http://127.0.0.1:8902/v1"],
+                "ports": [8902],
+                "command": "sagellm serve --port 8902",
+            }
+        ],
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_terminate_processes(pids, *, grace_period_s=3.0):
+        captured["pids"] = pids
+        captured["grace_period_s"] = grace_period_s
+        return {"terminated": [1234], "killed": [], "failed": []}
+
+    monkeypatch.setattr("sagellm_benchmark.cli._terminate_processes", fake_terminate_processes)
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            main,
+            [
+                "compare",
+                "--target",
+                "sagellm=http://127.0.0.1:8902/v1",
+                "--target",
+                "vllm=http://127.0.0.1:8901/v1",
+                "--model",
+                "Qwen/Qwen2.5-0.5B-Instruct",
+                "--prompt-cleanup",
+            ],
+            input="y\n",
+        )
+
+    assert result.exit_code == 0
+    assert "Kill detected local target processes now?" in result.output
+    assert captured["pids"] == [1234]
+    assert "Cleanup complete" in result.output
+
+
+def test_compare_prompt_cleanup_can_leave_targets_running(monkeypatch):
+    """compare should respect a negative cleanup confirmation."""
+
+    def fake_run_e2e_model_benchmarks(**kwargs):
+        return [
+            {
+                "model": kwargs["models"][0],
+                "precision": "live",
+                "scenario": "short_b1",
+                "batch_size": 1,
+                "ttft_ms": 10.0,
+                "tbt_ms": 2.0,
+                "throughput_tps": 100.0,
+                "latency_p50_ms": 20.0,
+                "latency_p95_ms": 25.0,
+                "latency_p99_ms": 30.0,
+                "memory_mb": 0.0,
+                "mode": "live",
+            }
+        ]
+
+    monkeypatch.setattr(
+        "sagellm_benchmark.performance.model_benchmarks.run_e2e_model_benchmarks",
+        fake_run_e2e_model_benchmarks,
+    )
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._discover_local_target_processes",
+        lambda parsed_targets: [
+            {
+                "pid": 5678,
+                "labels": ["vllm"],
+                "urls": ["http://127.0.0.1:8000/v1"],
+                "ports": [8000],
+                "command": "vllm serve --port 8000",
+            }
+        ],
+    )
+
+    def fail_terminate_processes(pids, *, grace_period_s=3.0):
+        raise AssertionError(f"terminate should not be called: {pids} {grace_period_s}")
+
+    monkeypatch.setattr("sagellm_benchmark.cli._terminate_processes", fail_terminate_processes)
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            main,
+            [
+                "compare",
+                "--target",
+                "sagellm=http://127.0.0.1:8902/v1",
+                "--target",
+                "vllm=http://127.0.0.1:8000/v1",
+                "--model",
+                "Qwen/Qwen2.5-0.5B-Instruct",
+                "--prompt-cleanup",
+            ],
+            input="n\n",
+        )
+
+    assert result.exit_code == 0
+    assert "Leaving local benchmark target processes running." in result.output

@@ -10,7 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `hooks/pre-push` 默认不再因检测到发布凭证而自动发布；只有显式使用 `git push -o sagellm-publish origin main-dev` 或 `SAGELLM_PUBLISH_ON_PUSH=1 git push origin main-dev` 时才会触发发布。
 - `hooks/post-commit` 默认不再在每次提交后自动 bump 版本；普通 `git push` 也不再触发 PyPI 版本冲突检查，只有显式发布时才会处理版本号。
+- `compare` 现支持 `--target-command LABEL=COMMAND`，`vllm-compare run` 现支持 `--start-sagellm-cmd` / `--start-vllm-cmd`：当本地 endpoint 未启动时可由 benchmark 先拉起服务、等待就绪，再执行对比；若这些进程由 benchmark 启动，则 cleanup prompt 会优先按其独立进程组做精确回收。
+- `compare` / `vllm-compare run` 现支持在交互式终端中于评测完成后提示是否清理本地 endpoint 对应进程；可通过 `--prompt-cleanup` / `--no-prompt-cleanup` 显式控制，避免本地 benchmark 跑完后遗留 SageLLM / vLLM 服务常驻。
 - 新增更干净的 `sagellm-benchmark vllm-compare` CLI 分组：`install-ascend` 负责安装已验证的 Ascend 对比环境，`run` 负责标准 `sageLLM vs vLLM` endpoint 对比；原有 shell 脚本收敛为兼容包装层。
+- README 新增对外统一实验提示词，明确第三方引擎对比必须经由 `sagellm-benchmark` 的 `compare` / `vllm-compare` 入口完成，不得把 compare 依赖或实验脚本回灌到 `sagellm-core`。
 - benchmark quickstart now installs the matching compare extra (`vllm-client` or `vllm-ascend-client`) before any convenience-layer package pinning, so runtime setup stays aligned with `pyproject.toml` as the dependency source of truth.
 - README / client guides now explicitly state that benchmark owns third-party engine comparison, `compare` is the canonical live entrypoint, and quickstart is only a convenience wrapper over benchmark extras.
 - `sagellm-benchmark compare` 现在作为 benchmark 侧唯一正式跨引擎对比入口；`perf --live` 仅保留单 endpoint 性能采集职责。

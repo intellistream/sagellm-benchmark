@@ -19,6 +19,7 @@ When asked to update package version, change only `_version.py`.
 
 ## Ascend Endpoint Benchmarking Reminder (Mandatory)
 
+- `sagellm-benchmark` is the owning repo for third-party engine comparison workflows. Keep `vLLM` / `LMDeploy` / other compare-engine dependencies, install helpers, endpoint probes, and live benchmark orchestration here rather than in `sagellm-core`.
 - `sagellm-benchmark` owns third-party engine comparison responsibilities: dependency extras, convenience install scripts, endpoint liveness checks, and live metrics collection all stay on the benchmark side.
 - For the standard `sageLLM vs vLLM` workflow, prefer the dedicated benchmark CLI:
    - `sagellm-benchmark vllm-compare install-ascend`

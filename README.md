@@ -77,11 +77,44 @@ sagellm-benchmark compare \
    --target vllm=http://127.0.0.1:8901/v1 \
    --model Qwen/Qwen2.5-0.5B-Instruct
 
+# In an interactive terminal, compare can also prompt to kill local target
+# processes after the benchmark finishes.
+sagellm-benchmark compare \
+   --target sagellm=http://127.0.0.1:8902/v1 \
+   --target vllm=http://127.0.0.1:8901/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --prompt-cleanup
+
+# If local endpoints are not running yet, provide per-target start commands.
+sagellm-benchmark compare \
+   --target sagellm=http://127.0.0.1:8902/v1 \
+   --target vllm=http://127.0.0.1:8000/v1 \
+   --target-command "sagellm=sagellm serve --backend cuda --model Qwen/Qwen2.5-0.5B-Instruct --port 8902" \
+   --target-command "vllm=vllm serve Qwen/Qwen2.5-0.5B-Instruct --port 8000" \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --prompt-cleanup
+
 # Convenience profile for the standard sageLLM vs vLLM layout
 sagellm-benchmark vllm-compare run \
    --sagellm-url http://127.0.0.1:8901/v1 \
    --vllm-url http://127.0.0.1:8000/v1 \
    --model Qwen/Qwen2.5-0.5B-Instruct
+
+# Prompt to clean up the locally running SageLLM/vLLM endpoints afterwards.
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:8000/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --prompt-cleanup
+
+# Optionally auto-start local SageLLM/vLLM endpoints if they are not up yet.
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:8000/v1 \
+   --start-sagellm-cmd "sagellm serve --backend cuda --model Qwen/Qwen2.5-0.5B-Instruct --port 8901" \
+   --start-vllm-cmd "vllm serve Qwen/Qwen2.5-0.5B-Instruct --port 8000" \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --prompt-cleanup
 
 # Generate charts (PNG/PDF, dark theme)
 sagellm-benchmark perf --type e2e --plot --plot-format png --plot-format pdf --theme dark
@@ -112,6 +145,8 @@ sagellm-benchmark report --input ./benchmark_results/perf_results.json --plot --
 ## Ascend vLLM 对比评测
 
 `sagellm-benchmark` 的 `compare` 是唯一推荐的跨引擎对比入口。`perf --live` 继续保留为单 endpoint 性能采集能力；真正的 sagellm vs vllm/lmdeploy 对比统一通过 `compare` 或 benchmark client 完成。
+
+对外统一提示词：请只在 `sagellm-benchmark` 中进行第三方引擎对比实验，使用 `compare` 或 `vllm-compare` 入口，先完成依赖安装、Ascend 环境注入与 endpoint 判活，再基于 OpenAI-compatible endpoints 产出对比结果，不要把 `vLLM`/`LMDeploy`/`SGLang` 的 adaptor、依赖或实验脚本回灌到 `sagellm-core`。
 
 如果当前目标就是标准的 `sageLLM vs vLLM` 对比，也可以使用便利入口：
 
