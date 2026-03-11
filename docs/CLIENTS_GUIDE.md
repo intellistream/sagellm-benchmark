@@ -152,6 +152,29 @@ sagellm-benchmark vllm-compare run \
 docker logs sagellm-benchmark-vllm | tail -n 200
 ```
 
+如果当前机器上 Docker 容器访问 `huggingface.co` 容易超时，优先改为“宿主机预热模型 + 本地目录挂载”模式：
+
+```bash
+HF_ENDPOINT=https://hf-mirror.com python - <<'PY'
+from huggingface_hub import snapshot_download
+snapshot_download(
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    local_dir="$HOME/.cache/hf-local-models/Qwen2.5-1.5B-Instruct",
+)
+PY
+
+DOCKER_CMD="sudo docker" \
+VLLM_GPU_DEVICE=1 \
+VLLM_PORT=9100 \
+VLLM_LOCAL_MODEL_DIR="$HOME/.cache/hf-local-models/Qwen2.5-1.5B-Instruct" \
+VLLM_SERVED_MODEL_NAME="Qwen/Qwen2.5-1.5B-Instruct" \
+./scripts/start_vllm_cuda_docker.sh
+```
+
+该模式会把宿主机本地模型目录挂到容器内，并自动设置离线模式，避免容器启动阶段再访问 `huggingface.co`。
+
+若当前账号不能直接访问 Docker daemon，可通过 `DOCKER_CMD="sudo docker"` 或其他已配置好的 runtime 命令复用同一套脚本，而不需要改 benchmark CLI 或 compare 流程。
+
 该 helper 默认使用 `--network host`，优先规避受限服务器上 Docker bridge 无法访问外网仓库的问题；只有明确需要端口映射隔离时，再通过 `VLLM_DOCKER_NETWORK_MODE=bridge` 切回 bridge 模式。
 
 推荐 CLI：

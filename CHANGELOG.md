@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- CUDA Docker vLLM helper 现在支持 `DOCKER_CMD` 覆盖容器命令，并支持通过 `VLLM_LOCAL_MODEL_DIR` / `VLLM_SERVED_MODEL_NAME` 挂载宿主机本地模型目录后离线启动容器，避免 A100 机器上 vLLM 容器在启动阶段直连 `huggingface.co` 超时。
 - 删除 `scripts/compare_openai_endpoints.sh` 这类纯兼容 compare wrapper，统一收口到 `sagellm-benchmark compare` / `sagellm-benchmark vllm-compare run`，避免旧 shell 入口继续制造参数顺序与 cleanup 行为歧义。
 - CUDA benchmark workflow: recommend running vLLM in a dedicated NVIDIA Docker container via `scripts/start_vllm_cuda_docker.sh` / `scripts/stop_vllm_cuda_docker.sh`, defaulting to `--network host` and preserved failure logs so repeated `sagellm-benchmark compare` runs can reuse a stable vLLM endpoint instead of reinstalling host-side wheels.
 - `scripts/setup_vllm_ascend_compare_env.sh` 新增官方 profile 机制：支持按主机 CANN 版本在 `official-v0.11.0` 与 `official-v0.13.0` 之间选择，旧/非目标 CANN 版本会在安装前 fail-fast，避免误把不兼容机器当作官方 endpoint compare 环境。
