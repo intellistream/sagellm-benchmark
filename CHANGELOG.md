@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `.gitignore` 现在默认忽略本地 `.env` / `.env.local` / `.env.*` 配置文件，同时保留 `.env.example` / `.env.template` 模板文件可提交，避免 live compare 与本地 endpoint 凭证被误提交。
 - `run_benchmark.sh` 的 `convergence` profile 现改为向 `sagellm-benchmark compare` 传递正确的 `--server-wait` 参数，避免 live compare 在启动前因错误选项名 `--server-wait-s` 直接失败，确保 `comparison.json/.md`、`validation_summary.json` 和 `VALIDATION.md` 能正常生成。
 - `run_benchmark.sh` 的 probe 采集现支持在 endpoint 不提供 `/info` 时自动回退抓取 `/v1/models`，并在 `validation_summary.json` / `VALIDATION.md` 中显式标出 `probe_coverage` 与 `evidence_gaps`，避免 `vLLM` 或轻量服务缺少 `/info` 时出现无解释的证据空洞。
 - `run_benchmark.sh` 的 convergence 汇总现在会直接扫描 `*_info.json` / `*_models.json` / `*_metrics.prom` 中的 shared-stream、paged-path、block-table 主路径信号，并将结果写入 `runtime_surface_markers`。即使没有服务日志文件，也能从 runtime surfaces 判断证据覆盖度，而不是把所有 marker 一律视作缺失。
