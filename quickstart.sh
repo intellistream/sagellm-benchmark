@@ -222,6 +222,39 @@ install_local_editable_overrides() {
     done
 }
 
+ascend_hw_detected() {
+    if ! command -v npu-smi >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local npu_info
+    npu_info="$(npu-smi info 2>/dev/null || true)"
+    [[ -n "$npu_info" && "$npu_info" == *"NPU"* ]]
+}
+
+install_benchmark_extra() {
+    local extra_name="$1"
+    echo -e "${BLUE}📦 安装 benchmark extra: ${extra_name}${NC}"
+    run_with_diagnostics \
+        "安装 benchmark extra ${extra_name}" \
+        "${PIP_CMD[@]}" install -e ".[$extra_name]"
+    echo -e "${GREEN}✓ 已安装 benchmark extra: ${extra_name}${NC}"
+}
+
+install_optional_vllm_client() {
+    if ascend_hw_detected; then
+        echo -e "${BLUE}📦 检测到 Ascend，先安装 canonical extra，再叠加已验证版本矩阵${NC}"
+        install_benchmark_extra "vllm-ascend-client"
+        run_with_diagnostics "卸载 vllm" "${PIP_CMD[@]}" uninstall -y vllm || true
+        run_with_diagnostics "安装 vllm-ascend" "${PIP_CMD[@]}" install "vllm-ascend>=0.11.0"
+        echo -e "${GREEN}✓ 已完成 Ascend compare client 安装（extras + 便利层矩阵）${NC}"
+    else
+        echo -e "${BLUE}📦 未检测到 Ascend，安装 canonical vLLM compare extra${NC}"
+        install_benchmark_extra "vllm-client"
+        echo -e "${GREEN}✓ 已完成通用 vLLM compare client 安装（以 extras 为准）${NC}"
+    fi
+}
+
 install_hooks() {
     if [ ! -d "$PROJECT_ROOT/.git/hooks" ]; then
         echo -e "${YELLOW}⚠ .git/hooks 目录不存在，跳过 hooks 安装${NC}"
@@ -262,11 +295,11 @@ main() {
         exit 0
     fi
 
-    echo -e "${YELLOW}${BOLD}Step 1/5: Checking Python environment${NC}"
+    echo -e "${YELLOW}${BOLD}Step 1/6: Checking Python environment${NC}"
     check_environment
     echo ""
 
-    echo -e "${YELLOW}${BOLD}Step 2/5: Cleaning existing isagellm-* packages${NC}"
+    echo -e "${YELLOW}${BOLD}Step 2/6: Cleaning existing isagellm-* packages${NC}"
     if [ "$SKIP_CLEANUP" = "true" ]; then
         echo -e "${YELLOW}⚠ 已跳过清理（--skip-cleanup）${NC}"
     else
@@ -274,18 +307,22 @@ main() {
     fi
     echo ""
 
-    echo -e "${YELLOW}${BOLD}Step 3/5: Installing PyPI baseline${NC}"
+    echo -e "${YELLOW}${BOLD}Step 3/6: Installing PyPI baseline${NC}"
     install_pypi_baseline
     echo ""
 
-    echo -e "${YELLOW}${BOLD}Step 4/5: Installing editable package(s)${NC}"
+    echo -e "${YELLOW}${BOLD}Step 4/6: Installing editable package(s)${NC}"
     install_current_repo
     if [ "$INSTALL_MODE" = "dev" ]; then
         install_local_editable_overrides
     fi
     echo ""
 
-    echo -e "${YELLOW}${BOLD}Step 5/5: Installing Git hooks${NC}"
+    echo -e "${YELLOW}${BOLD}Step 5/6: Installing optional compare client${NC}"
+    install_optional_vllm_client
+    echo ""
+
+    echo -e "${YELLOW}${BOLD}Step 6/6: Installing Git hooks${NC}"
     if [ "$SKIP_HOOKS" = "true" ]; then
         echo -e "${YELLOW}⚠ 已跳过 hooks 安装（--skip-hooks）${NC}"
     else
@@ -294,6 +331,8 @@ main() {
     echo ""
 
     echo -e "${GREEN}${BOLD}✓ Setup complete!${NC}"
+    echo ""
+    echo -e "${YELLOW}Dependency note:${NC} benchmark extras remain the source of truth; quickstart only installs the matching extra and optional validated pins."
     echo ""
     echo -e "${BLUE}${BOLD}Next steps:${NC}"
     echo -e "  ${CYAN}pytest tests/${NC}                    — run tests"

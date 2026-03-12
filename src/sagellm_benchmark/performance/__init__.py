@@ -8,9 +8,25 @@ from sagellm_benchmark.performance.benchmark_utils import (
     compare_benchmarks,
     format_comparison_table,
 )
-from sagellm_benchmark.performance.model_benchmarks import run_e2e_model_benchmarks
-from sagellm_benchmark.performance.operator_benchmarks import run_operator_benchmarks
-from sagellm_benchmark.performance.plotting import generate_perf_charts
+
+
+def run_operator_benchmarks(*args, **kwargs):
+    from sagellm_benchmark.performance.operator_benchmarks import run_operator_benchmarks as _run
+
+    return _run(*args, **kwargs)
+
+
+def run_e2e_model_benchmarks(*args, **kwargs):
+    from sagellm_benchmark.performance.model_benchmarks import run_e2e_model_benchmarks as _run
+
+    return _run(*args, **kwargs)
+
+
+def generate_perf_charts(*args, **kwargs):
+    from sagellm_benchmark.performance.plotting import generate_perf_charts as _generate
+
+    return _generate(*args, **kwargs)
+
 
 __all__ = [
     "BenchmarkResult",

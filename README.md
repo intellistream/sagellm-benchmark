@@ -15,6 +15,27 @@ Benchmark suite for sageLLM inference engine performance and validation.
 
 New here? See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide.
 
+Canonical boundary note: performance-path ownership is defined in <https://github.com/intellistream/sagellm-docs/blob/main/docs/specs/performance_mainline_architecture.md>. `sagellm-benchmark` validates the main path externally; it does not define runtime semantics for `sagellm-core`.
+
+## Mainline Validation Mapping
+
+Use benchmark output as proof for the canonical performance mainline, not as a standalone score table.
+
+- `avg_ttft_ms`: admission + prefill responsiveness. Good for spotting whether batching changes hurt interactive startup.
+- `avg_tbt_ms`: decode-step latency on the formal execution path. This is the first field to inspect for `stateful batch decode` convergence.
+- `avg_throughput_tps`: average per-request throughput. Useful for request-level decode efficiency, but not a substitute for aggregate batch throughput.
+- `output_throughput_tps`: best top-line field for shared-stream and paged/native convergence when comparing batch size `>= 2`.
+- `request_throughput_rps`: useful when an optimization changes concurrent admission or batch turnover more than single-request token speed.
+- `shared_stream_markers.hits`: required log evidence that shared batching actually activated.
+- `paged_path_markers.hits`: evidence that paged/native or explicit fallback attention implementations were actually reached.
+- `block_table_markers.hits`: evidence that scheduler-provided `block_tables` crossed the runtime boundary and survived to execution.
+
+Interpretation rule:
+
+- Better `avg_tbt_ms` or `output_throughput_tps` without marker evidence is only a performance observation, not proof that the intended mainline path converged.
+- Marker evidence without competitive latency/throughput means the path is wired, but not yet performant.
+- A valid convergence claim should combine metric deltas with `/info`, `/metrics`, or `*_log_probe.json` evidence.
+
 ## Features
 
 - End-to-end Q1-Q8 query workloads covering diverse LLM scenarios
@@ -22,6 +43,8 @@ New here? See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide.
 - One-command benchmark runner
 - Extensible backend support
 - Performance benchmark CLI (`perf`) for operator and E2E benchmark baselines
+- Canonical `compare` entrypoint for sagellm vs vllm/lmdeploy endpoint benchmarking
+- Convergence validation profile for shared-stream batching, block-table usage, and paged/native path evidence
 
 ## Dependencies
 
@@ -38,15 +61,21 @@ pip install isagellm-benchmark
 For specific backend support:
 
 ```bash
-# With vLLM support
-pip install isagellm-benchmark[vllm-client]
+# With vLLM support (non-Ascend)
+pip install 'isagellm-benchmark[vllm-client]'
+
+# With vLLM Ascend support (Ascend machines)
+pip install 'isagellm-benchmark[vllm-ascend-client]'
 
 # With LMDeploy support
-pip install isagellm-benchmark[lmdeploy-client]
-
-# With OpenAI/Gateway support
-pip install isagellm-benchmark[openai-client]
+pip install 'isagellm-benchmark[lmdeploy-client]'
 ```
+
+Dependency policy:
+
+- `pyproject.toml` extras are the single source of truth for third-party compare clients.
+- `quickstart.sh` and setup scripts are convenience layers that install those extras and, when needed, add a validated runtime matrix on top.
+- Cross-engine comparison belongs on the benchmark side only; `sagellm-core` is not a third-party engine compare entry.
 
 ## Quick Start
 
@@ -64,8 +93,190 @@ sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --fo
 sagellm-benchmark perf --type operator --device cpu
 sagellm-benchmark perf --type e2e --model Qwen/Qwen2-7B-Instruct --batch-size 1 --batch-size 4
 
+# Compare multiple OpenAI-compatible endpoints through benchmark clients
+sagellm-benchmark compare \
+   --target sagellm=http://127.0.0.1:8902/v1 \
+   --target vllm=http://127.0.0.1:8901/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct
+
+# If GPU memory is tight, capture the two engines sequentially and compare offline.
+sagellm-benchmark compare-record \
+   --label sagellm \
+   --url http://127.0.0.1:8901/v1 \
+   --model Qwen/Qwen2.5-1.5B-Instruct \
+   --output-dir ./benchmark_results/sequential/sagellm
+
+sagellm-benchmark compare-record \
+   --label vllm \
+   --url http://127.0.0.1:9100/v1 \
+   --model Qwen/Qwen2.5-1.5B-Instruct \
+   --output-dir ./benchmark_results/sequential/vllm
+
+sagellm-benchmark compare-offline \
+   --result sagellm=./benchmark_results/sequential/sagellm/sagellm.json \
+   --result vllm=./benchmark_results/sequential/vllm/vllm.json \
+   --output-dir ./benchmark_results/sequential/compare
+
+# In an interactive terminal, compare can also prompt to kill local target
+# processes after the benchmark finishes.
+sagellm-benchmark compare \
+   --target sagellm=http://127.0.0.1:8902/v1 \
+   --target vllm=http://127.0.0.1:8901/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --prompt-cleanup
+
+# If local endpoints are not running yet, provide per-target start commands.
+sagellm-benchmark compare \
+   --target sagellm=http://127.0.0.1:8902/v1 \
+   --target vllm=http://127.0.0.1:8000/v1 \
+   --target-command "sagellm=sagellm serve --backend cuda --model Qwen/Qwen2.5-0.5B-Instruct --port 8902" \
+   --target-command "vllm=vllm serve Qwen/Qwen2.5-0.5B-Instruct --port 8000" \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --prompt-cleanup
+
+# Convenience profile for the standard sageLLM vs vLLM layout
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:8000/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct
+
+# Prompt to clean up the locally running SageLLM/vLLM endpoints afterwards.
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:8000/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --prompt-cleanup
+
+# Optionally auto-start local SageLLM/vLLM endpoints if they are not up yet.
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:8000/v1 \
+   --start-sagellm-cmd "sagellm serve --backend cuda --model Qwen/Qwen2.5-0.5B-Instruct --port 8901" \
+   --start-vllm-cmd "vllm serve Qwen/Qwen2.5-0.5B-Instruct --port 8000" \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --prompt-cleanup
+
+# Recommended on A100/CUDA hosts: keep vLLM in a dedicated Docker container,
+# then reuse the stable endpoint for each compare run.
+VLLM_GPU_DEVICE=1 VLLM_PORT=9100 \
+   ./scripts/start_vllm_cuda_docker.sh
+
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:9100/v1 \
+   --model Qwen/Qwen2.5-1.5B-Instruct
+
+# Or let compare bootstrap the Dockerized vLLM endpoint on demand.
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:9100/v1 \
+   --start-vllm-cmd "./scripts/start_vllm_cuda_docker.sh" \
+   --model Qwen/Qwen2.5-1.5B-Instruct
+
+# If startup fails, logs remain available because the helper does not use
+# --rm by default:
+docker logs sagellm-benchmark-vllm | tail -n 200
+
+# The helper defaults to --network host, which is more reliable on locked-down
+# servers where Docker bridge networking cannot reach huggingface.co.
+
 # Generate charts (PNG/PDF, dark theme)
 sagellm-benchmark perf --type e2e --plot --plot-format png --plot-format pdf --theme dark
+
+# Keep the default Q1-Q8 CPU flow
+./run_benchmark.sh
+
+# Run the convergence validation loop against two live endpoints
+./run_benchmark.sh --profile convergence \
+   --target before=http://127.0.0.1:8901/v1 \
+   --target after=http://127.0.0.1:8902/v1 \
+   --log-file before=/tmp/sagellm-before.log \
+   --log-file after=/tmp/sagellm-after.log \
+   --model Qwen/Qwen2.5-0.5B-Instruct
+```
+
+When validating the mainline architecture rather than just endpoint speed, preserve three artifact classes together:
+
+- compare results: `comparison.json/.md`
+- runtime surfaces: `*_info.json`, `*_metrics.prom`
+- path evidence: `*_log_probe.json`
+
+## Convergence Validation Loop
+
+Use the benchmark repo as the external validation layer for recent `sagellm-core` and `sagellm-backend` convergence work. The convergence profile keeps runtime selection outside `sagellm-core`, then captures both benchmark deltas and endpoint observability snapshots.
+
+Standard result fields to compare:
+
+- `avg_ttft_ms`
+- `avg_tbt_ms`
+- `avg_throughput_tps`
+- `output_throughput_tps`
+- `request_throughput_rps`
+- `shared_stream_markers.hits`
+- `paged_path_markers.hits`
+- `block_table_markers.hits`
+
+Standard artifacts written by `./run_benchmark.sh --profile convergence`:
+
+- `comparison.json` and `comparison.md`
+- `validation_summary.json` and `VALIDATION.md`
+- `REPRODUCE.sh`
+- `<label>.json` and `<label>.md`
+- `<label>_info.json`
+- `<label>_metrics.prom`
+- `<label>_log_probe.json` when `--log-file LABEL=PATH` is provided
+
+Recommended benchmark interpretation:
+
+- Shared-stream batching: compare `avg_ttft_ms`, `avg_tbt_ms`, and `output_throughput_tps` at `--batch-size 2` and `--batch-size 4`, then confirm the candidate endpoint shows non-zero `shared_stream_markers.hits`.
+- Paged/native path usage: inspect `<label>_metrics.prom`, `<label>_info.json`, and `<label>_log_probe.json` for non-zero `paged_path_markers.hits`.
+- Formal block-table path: inspect `<label>_log_probe.json` for non-zero `block_table_markers.hits`, then correlate with the batch-size latency/throughput deltas.
+
+Reproducible command templates:
+
+Shared stream before/after:
+
+```bash
+./run_benchmark.sh --profile convergence \
+   --target before=http://127.0.0.1:8901/v1 \
+   --target after=http://127.0.0.1:8902/v1 \
+   --log-file before=/var/log/sagellm-before.log \
+   --log-file after=/var/log/sagellm-after.log \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --batch-size 1 --batch-size 2 --batch-size 4 \
+   --max-output-tokens 64
+```
+
+Paged/native on vs off:
+
+```bash
+./run_benchmark.sh --profile convergence \
+   --target torch_fallback=http://127.0.0.1:8911/v1 \
+   --target native_ascend=http://127.0.0.1:8912/v1 \
+   --log-file torch_fallback=/var/log/sagellm-fallback.log \
+   --log-file native_ascend=/var/log/sagellm-native.log \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --batch-size 1 --batch-size 2 --batch-size 4 \
+   --max-output-tokens 64
+```
+
+Cross-backend comparison on domestic hardware:
+
+```bash
+./run_benchmark.sh --profile convergence \
+   --target ascend_native=http://127.0.0.1:8921/v1 \
+   --target kunlun_native=http://127.0.0.1:8922/v1 \
+   --target musa_native=http://127.0.0.1:8923/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --batch-size 1 --batch-size 2 --batch-size 4 \
+   --max-output-tokens 64
+```
+
+On Ascend hosts, start the SageLLM endpoint through the umbrella runtime wrapper before benchmarking:
+
+```bash
+cd /home/shuhao/sagellm
+./scripts/sagellm_with_ascend_env.sh sagellm serve --backend ascend --model Qwen/Qwen2.5-0.5B-Instruct --port 8912
 ```
 
 CLI examples:
@@ -89,6 +300,62 @@ sagellm-benchmark report --input ./benchmark_results/perf_results.json --format 
 # Re-generate charts from existing perf JSON
 sagellm-benchmark report --input ./benchmark_results/perf_results.json --plot --plot-format png
 ```
+
+## Ascend vLLM 对比评测
+
+`sagellm-benchmark` 的 `compare` 是唯一推荐的跨引擎对比入口。`perf --live` 继续保留为单 endpoint 性能采集能力；真正的 sagellm vs vllm/lmdeploy 对比统一通过 `compare` 或 benchmark client 完成。
+
+对外统一提示词：请只在 `sagellm-benchmark` 中进行第三方引擎对比实验，使用 `compare` 或 `vllm-compare` 入口，先完成依赖安装、Ascend 环境注入与 endpoint 判活，再基于 OpenAI-compatible endpoints 产出对比结果，不要把 `vLLM`/`LMDeploy`/`SGLang` 的 adaptor、依赖或实验脚本回灌到 `sagellm-core`。
+
+如果当前目标就是标准的 `sageLLM vs vLLM` 对比，也可以使用便利入口：
+
+```bash
+sagellm-benchmark vllm-compare install-ascend
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:8000/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct
+```
+
+如需在 Ascend 机器上复现 `vllm-ascend` vs `sagellm` 对比，优先参考：
+
+- [docs/ASCEND_BENCHMARK.md](docs/ASCEND_BENCHMARK.md)
+- [scripts/setup_vllm_ascend_compare_env.sh](scripts/setup_vllm_ascend_compare_env.sh)
+- [scripts/run_vllm_ascend_container.sh](scripts/run_vllm_ascend_container.sh)
+
+其中 `pyproject.toml` 里的 benchmark extras 是依赖声明的唯一事实来源；
+`scripts/setup_vllm_ascend_compare_env.sh` 只是在其之上附加一套已验证的 Ascend 版本矩阵，作为便利层而非新的依赖入口。
+
+如果直接运行 `./quickstart.sh`，脚本也会先安装匹配当前硬件的 benchmark extra，再视场景叠加便利层安装步骤。
+
+1. 分别启动两个服务（例如 `sageLLM` 与 `vLLM Ascend`），确保都提供 `/v1/models` 与 `/v1/chat/completions`。
+2. 运行对比命令：
+
+```bash
+sagellm-benchmark vllm-compare run \
+   --sagellm-url http://127.0.0.1:8901/v1 \
+   --vllm-url http://127.0.0.1:8000/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct
+```
+
+等价的正式 CLI 用法：
+
+```bash
+sagellm-benchmark compare \
+   --target sagellm=http://127.0.0.1:8901/v1 \
+   --target vllm=http://127.0.0.1:8000/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --batch-size 1 --batch-size 2 --batch-size 4 \
+   --max-output-tokens 64
+```
+
+输出会写入 `benchmark_results/compare_*/`，包含：
+
+- `<target>.json/.md`
+- `comparison.md`（汇总 TTFT/TBT/TPS 差异）
+- `comparison.json`（结构化对比摘要）
+
+如需同时验证 shared-stream batching 与 paged/block-table 路径，优先使用上面的 `run_benchmark.sh --profile convergence`，因为它会额外落盘 `/info`、`/metrics` 和可选日志探针结果。
 
 ## Workloads
 
@@ -121,7 +388,14 @@ Metrics include latency, throughput, memory, and error rates. See
 ## Backends
 
 - **cpu**: CPU inference via HuggingFace Transformers (requires `--model`)
-- **planned**: lmdeploy, vllm (Clients implemented, CLI integration pending)
+- **compare targets**: `sagellm` / `vllm` / `lmdeploy` 通过 `compare` 或 benchmark clients 接入，而不是通过 `run --backend`
+
+## Compare Policy
+
+- `sagellm-benchmark compare` 是 sagellm 与第三方引擎对比的唯一推荐入口。
+- 优先使用 OpenAI-compatible endpoint 做对比；若第三方服务不提供兼容 endpoint，则通过 `sagellm_benchmark.clients.*` Python client 接入。
+- 第三方引擎依赖、启动便利脚本、endpoint 验活和 live 指标采集都收敛在 `sagellm-benchmark`，不再要求 `sagellm-core` 承担此职责。
+- `./quickstart.sh` 会自动补装匹配当前硬件的 vLLM compare extra；Ascend 机器会在 extra 之上再叠加验证过的版本矩阵。
 
 ## Development
 
@@ -143,6 +417,7 @@ Quickstart modes:
 
 - `--standard`: installs baseline dependencies from PyPI, then installs current repo in editable mode.
 - `--dev`: runs `standard` flow, then tries local editable overrides for sibling repos with `--no-deps`.
+- quickstart also installs the matching benchmark compare extra for the current machine; extras remain the dependency source of truth.
 - Before install, `quickstart.sh` dynamically cleans existing `isagellm-*` packages for re-entrant setup.
 
 ### Running Tests

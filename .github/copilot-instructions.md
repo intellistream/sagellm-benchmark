@@ -17,6 +17,41 @@ For Python packages in this repository, version must have exactly one hardcoded 
 
 When asked to update package version, change only `_version.py`.
 
+## Ascend Endpoint Benchmarking Reminder (Mandatory)
+
+- `sagellm-benchmark` is the owning repo for third-party engine comparison workflows. Keep `vLLM` / `LMDeploy` / other compare-engine dependencies, install helpers, endpoint probes, and live benchmark orchestration here rather than in `sagellm-core`.
+- `sagellm-benchmark` owns third-party engine comparison responsibilities: dependency extras, convenience install scripts, endpoint liveness checks, and live metrics collection all stay on the benchmark side.
+- For the standard `sageLLM vs vLLM` workflow, prefer the dedicated benchmark CLI:
+   - `sagellm-benchmark vllm-compare install-ascend`
+   - `sagellm-benchmark vllm-compare run --sagellm-url <url> --vllm-url <url> --model <model>`
+- `sagellm-benchmark compare` remains the generic multi-endpoint entrypoint; `vllm-compare` is the thin, semantic wrapper for the common vLLM comparison path.
+- `scripts/setup_vllm_ascend_compare_env.sh` is a compatibility/ops layer only. Do not add new primary logic there when the same behavior belongs in the CLI.
+- Benchmark dependency declarations must live in `pyproject.toml` extras. Scripts may pin a validated environment matrix, but must not become an alternate source of truth for compare-client dependencies.
+
+- In Ascend environments with only `vllm-ascend` installed, `python -m vllm.entrypoints.openai.api_server` may fail because `vllm` package/module is absent.
+- Before assuming an endpoint is `vllm-ascend`, always verify with runtime checks:
+   - `ss -ltnp | grep -E ':<port>'` to map port → process
+   - `curl /health`, `curl /info`, `curl /v1/models` to identify engine capability/shape
+- Do not label a benchmark as `vllm-ascend` unless the serving process is confirmed to be a real `vllm-ascend` server process.
+
+### train05 / current Ascend host practical rules
+
+- Prefer `sagellm-benchmark vllm-compare install-ascend` over directly invoking setup shell scripts in new instructions, examples, or automation.
+- Prefer `sagellm-benchmark vllm-compare run` over passing anonymous `endpoint_a/endpoint_b` style arguments in new instructions, examples, or automation.
+- Always inject Ascend runtime before startup via wrapper:
+   - `cd /home/user8/sagellm`
+   - `./scripts/sagellm_with_ascend_env.sh <python-or-server-command>`
+- Run preflight smoke test in the exact target env before server startup:
+   - `import torch, torch_npu`
+   - `torch.npu.is_available()`
+   - `torch.npu.set_device('npu:0')` and one small NPU tensor op
+- If `python -m vllm.entrypoints.openai.api_server` fails with module-missing/entrypoint-mismatch, treat it as environment/package-layout issue first; do not continue benchmark with an unverified server.
+- Startup success criteria are mandatory (all pass):
+   - Port bind: `ss -ltnp | grep -E ':<port>'`
+   - Process fingerprint: `pgrep -af 'vllm|vllm-ascend|EngineCore'`
+   - API health/model endpoints return valid payloads
+- If any criterion fails, mark run as invalid and stop comparison output generation.
+
 
 ## Git Hooks（强制 - Mandatory）
 
@@ -40,6 +75,8 @@ When asked to update package version, change only `_version.py`.
 - ✅ 执行 `git commit` 或 `git push` 时，**永远不要**添加 `--no-verify` 标志
 - ✅ 如果 hooks 检查失败，必须先修复问题再提交，而不是绕过 hooks
 - ✅ 帮助开发者设置 hooks 时，推荐运行 `./quickstart.sh`
+- ✅ 默认 `git push` **不会自动发布**，发布必须显式触发
+- ✅ 如需在推送 `main-dev` 时发布，使用 `git push -o sagellm-publish origin main-dev`；若当前 Git 客户端不支持 push option，则使用 `SAGELLM_PUBLISH_ON_PUSH=1 git push origin main-dev`
 
 ## 🚫 NEVER_CREATE_DOT_VENV_MANDATORY
 

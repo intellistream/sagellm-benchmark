@@ -57,6 +57,38 @@
 
 sagellm-benchmark 的客户端是为了 **性能测试**，不是生产部署：
 
+### 依赖约定
+
+- `pyproject.toml` 里的 benchmark extras 是对比客户端依赖的唯一声明来源。
+- 安装脚本只负责便捷地铺设或固定一套已验证环境，不替代 extras。
+- 需要第三方对比引擎时，先安装对应 extras；脚本只在你需要复现特定环境矩阵时再额外执行。
+- `./quickstart.sh` 会按当前机器类型自动补装匹配的 compare extra；在 Ascend 上还会额外叠加一套已验证版本矩阵，但该矩阵仍从属于 extras，而不是新的依赖入口。
+
+```bash
+# vLLM 对比（通用环境）
+pip install -U 'isagellm-benchmark[vllm-client]'
+
+# vLLM Ascend 对比（Ascend 机器）
+pip install -U 'isagellm-benchmark[vllm-ascend-client]'
+
+# LMDeploy 对比
+pip install -U 'isagellm-benchmark[lmdeploy-client]'
+
+# 仅在需要复现已验证的 Ascend 版本矩阵时，再运行便利脚本
+bash scripts/setup_vllm_ascend_compare_env.sh
+```
+
+如果你直接使用 quickstart：
+
+```bash
+./quickstart.sh --dev
+```
+
+行为约定：
+
+- 非 Ascend 机器：安装 `isagellm-benchmark[vllm-client]`
+- Ascend 机器：安装 `isagellm-benchmark[vllm-ascend-client]`，再叠加已验证版本矩阵
+
 ## Overview
 
 sagellm-benchmark 提供多种客户端，用于测试不同的 LLM 服务：
@@ -67,6 +99,100 @@ sagellm-benchmark 提供多种客户端，用于测试不同的 LLM 服务：
 | **SageLLMClient** | sagellm-backend 原生引擎 | 直接调用（无 HTTP） |
 | **VLLMClient** | vLLM | HTTP API |
 | **LMDeployClient** | LMDeploy | HTTP API |
+
+## 唯一对比入口
+
+跨引擎对比现在统一收敛到 `sagellm-benchmark`：
+
+1. 优先使用 `sagellm-benchmark compare` 对多个 OpenAI-compatible endpoint 做 live 对比。
+2. 对于标准 `sageLLM vs vLLM` 流程，优先使用更薄的 `sagellm-benchmark vllm-compare run` 包装入口。
+3. 若服务没有兼容 OpenAI 的 `/v1` 接口，再使用 benchmark Python client（如 `LMDeployClient`）补齐。
+4. `sagellm-core` 只保留 SageLLM 自身引擎能力与通用插件抽象，不再作为 vLLM/LMDeploy 对比入口。
+
+标准 `sageLLM vs vLLM` 推荐 CLI：
+
+```bash
+sagellm-benchmark vllm-compare run \
+    --sagellm-url http://127.0.0.1:8901/v1 \
+    --vllm-url http://127.0.0.1:8000/v1 \
+    --model Qwen/Qwen2.5-0.5B-Instruct
+```
+
+在 A100/CUDA 机器上，推荐把 vLLM 固定为独立 Docker 服务，而不是每次在宿主机里重新安装 / 重配 `vllm` wheel：
+
+```bash
+cd sagellm-benchmark
+VLLM_GPU_DEVICE=1 VLLM_PORT=9100 ./scripts/start_vllm_cuda_docker.sh
+
+sagellm-benchmark vllm-compare run \
+    --sagellm-url http://127.0.0.1:8901/v1 \
+    --vllm-url http://127.0.0.1:9100/v1 \
+    --model Qwen/Qwen2.5-1.5B-Instruct
+```
+
+如果希望 compare 在 endpoint 缺失时自动把容器拉起：
+
+```bash
+sagellm-benchmark vllm-compare run \
+    --sagellm-url http://127.0.0.1:8901/v1 \
+    --vllm-url http://127.0.0.1:9100/v1 \
+    --start-vllm-cmd "./scripts/start_vllm_cuda_docker.sh" \
+    --model Qwen/Qwen2.5-1.5B-Instruct
+```
+
+默认容器名为 `sagellm-benchmark-vllm`，停止时执行：
+
+```bash
+./scripts/stop_vllm_cuda_docker.sh
+```
+
+默认情况下该 helper 不会给容器加 `--rm`，这样遇到 OOM、模型加载失败或参数不兼容时，可以直接查看容器日志：
+
+```bash
+docker logs sagellm-benchmark-vllm | tail -n 200
+```
+
+如果当前机器上 Docker 容器访问 `huggingface.co` 容易超时，优先改为“宿主机预热模型 + 本地目录挂载”模式：
+
+```bash
+HF_ENDPOINT=https://hf-mirror.com python - <<'PY'
+from huggingface_hub import snapshot_download
+snapshot_download(
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    local_dir="$HOME/.cache/hf-local-models/Qwen2.5-1.5B-Instruct",
+)
+PY
+
+DOCKER_CMD="sudo docker" \
+VLLM_GPU_DEVICE=1 \
+VLLM_PORT=9100 \
+VLLM_LOCAL_MODEL_DIR="$HOME/.cache/hf-local-models/Qwen2.5-1.5B-Instruct" \
+VLLM_SERVED_MODEL_NAME="Qwen/Qwen2.5-1.5B-Instruct" \
+./scripts/start_vllm_cuda_docker.sh
+```
+
+该模式会把宿主机本地模型目录挂到容器内，并自动设置离线模式，避免容器启动阶段再访问 `huggingface.co`。
+
+若当前账号不能直接访问 Docker daemon，可通过 `DOCKER_CMD="sudo docker"` 或其他已配置好的 runtime 命令复用同一套脚本，而不需要改 benchmark CLI 或 compare 流程。
+
+该 helper 默认使用 `--network host`，优先规避受限服务器上 Docker bridge 无法访问外网仓库的问题；只有明确需要端口映射隔离时，再通过 `VLLM_DOCKER_NETWORK_MODE=bridge` 切回 bridge 模式。
+
+推荐 CLI：
+
+```bash
+sagellm-benchmark compare \
+    --target sagellm=http://127.0.0.1:8902/v1 \
+    --target vllm=http://127.0.0.1:8901/v1 \
+    --target lmdeploy=http://127.0.0.1:23333/v1 \
+    --model Qwen/Qwen2.5-0.5B-Instruct
+```
+
+该命令会在 benchmark 侧统一完成：
+
+- endpoint 健康检查与模型发现
+- TTFT/TBT/TPS live 指标采集
+- 每个 target 的 JSON/Markdown 产物输出
+- 汇总 `comparison.json` 与 `comparison.md`
 
 ## GatewayClient（推荐用于完整系统测试）
 
@@ -108,6 +234,15 @@ result = await client.generate(request)
 print(f"TTFT: {result.metrics.ttft_ms:.2f}ms")
 ```
 
+### compare 命令默认就走 GatewayClient
+
+对于 `sagellm`、`vllm`、`lmdeploy` 这类已经暴露 OpenAI-compatible endpoint 的服务，`compare` 命令默认使用 `GatewayClient` 统一测量，而不是在每个引擎 client 中复制一套 HTTP/streaming/metrics 逻辑。
+
+因此：
+
+- `VLLMClient(server)` 主要用于 benchmark 内部复用或特殊脚本场景
+- 正式跨引擎 live 对比默认仍以 `compare` 为准
+
 ### 对比：OpenAI 官方 API
 
 ```python
@@ -128,6 +263,8 @@ openai_client = GatewayClient(
 - 测试引擎核心性能（无网络开销）
 - 本地开发和调试
 - 单元测试
+
+注意：`SageLLMClient` 用于本地原生引擎测试，不是跨引擎对比的首选入口。跨引擎对比优先走 `compare` 或 `GatewayClient`。
 
 ### 使用示例
 
@@ -152,18 +289,20 @@ result = await client.generate(request)
 
 | 测试场景 | 推荐客户端 | 原因 |
 |---------|-----------|------|
+| sagellm vs vllm/lmdeploy 标准对比 | **`sagellm-benchmark compare`** | benchmark 唯一正式入口，统一 endpoint 探活、live 指标和输出 |
 | 完整系统性能测试（生产架构）| **GatewayClient** | 包含完整调用链路（HTTP + Control Plane），符合生产部署 |
 | API 网关功能测试 | **GatewayClient** | 直接测试 sagellm-gateway |
 | 引擎核心性能测试（无网络开销）| **SageLLMClient** | 绕过网络层，聚焦引擎性能 |
 | 与 OpenAI 对比 | **GatewayClient** | 可连接 OpenAI API |
-| vLLM 对比测试 | **VLLMClient** | 专用客户端 |
-| LMDeploy 对比测试 | **LMDeployClient** | 专用客户端 |
+| vLLM 对比测试 | **GatewayClient / compare** | vLLM server mode 已复用通用 OpenAI-compatible client |
+| LMDeploy 对比测试 | **GatewayClient / LMDeployClient** | 先用 OpenAI-compatible endpoint；仅在非兼容接口时再走专用 client |
 
 ### 关键原则
 
 1. **生产环境必须走 HTTP**：外部用户只能通过 sagellm-gateway（OpenAI API）访问
-2. **基准测试模拟真实场景**：使用 GatewayClient 测试完整调用链路
-3. **引擎性能测试可直连**：使用 SageLLMClient 排除网络干扰
+2. **跨引擎对比统一走 benchmark**：使用 `compare` 或 benchmark client，不在 core 里扩第三方 adaptor
+3. **基准测试模拟真实场景**：使用 GatewayClient 测试完整调用链路
+4. **引擎性能测试可直连**：使用 SageLLMClient 排除网络干扰
 
 ## 架构说明
 

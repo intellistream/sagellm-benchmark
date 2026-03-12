@@ -234,6 +234,14 @@ class LeaderboardExporter:
         return default
 
     @staticmethod
+    def _normalize_engine_name(raw_value: Any) -> str:
+        """Normalize engine name for leaderboard metadata."""
+        raw = str(raw_value or "").strip().lower()
+        if not raw:
+            return "unknown"
+        return raw.replace(" ", "-")
+
+    @staticmethod
     def export_to_leaderboard(
         metrics: AggregatedMetrics,
         config: dict[str, Any],
@@ -334,12 +342,36 @@ class LeaderboardExporter:
                 config_versions, ("sagellm_benchmark", "benchmark")
             ),
         }
+        sagellm_version = LeaderboardExporter._resolve_version(
+            config_versions, ("sagellm", "sagellm_benchmark", "benchmark")
+        )
+
+        metadata_overrides = custom_metadata or {}
+        engine = LeaderboardExporter._normalize_engine_name(
+            metadata_overrides.get("engine")
+            or config.get("engine")
+            or config.get("runtime_engine")
+            or config.get("service")
+            or ("sagellm" if sagellm_version != "N/A" else "")
+        )
+        engine_version = str(
+            metadata_overrides.get("engine_version")
+            or LeaderboardExporter._resolve_version(
+                config_versions,
+                (
+                    engine.replace("-", "_"),
+                    "sagellm",
+                    "sagellm_benchmark",
+                    "benchmark",
+                ),
+            )
+        )
 
         entry = {
             "entry_id": str(uuid.uuid4()),
-            "sagellm_version": LeaderboardExporter._resolve_version(
-                config_versions, ("sagellm", "sagellm_benchmark", "benchmark")
-            ),
+            "engine": engine,
+            "engine_version": engine_version,
+            "sagellm_version": sagellm_version,
             "config_type": config_type,
             "hardware": hardware,
             "model": model_info,
@@ -358,6 +390,8 @@ class LeaderboardExporter:
                 "submitted_at": datetime.now(UTC).isoformat(),
                 "submitter": "sagellm-benchmark automated run",
                 "data_source": "automated-benchmark",
+                "engine": engine,
+                "engine_version": engine_version,
                 "reproducible_cmd": f"sagellm-benchmark run --workload {config.get('workload')} --backend {config.get('backend')} --model {config.get('model')}",
                 "git_commit": None,
                 "release_date": config.get("timestamp", "").split("T")[0]

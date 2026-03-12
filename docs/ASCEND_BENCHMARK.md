@@ -1,149 +1,272 @@
-# Ascend Engine Benchmark (MVP)
+# Ascend Endpoint Benchmark Guide
 
-本文档说明如何使用 sagellm-benchmark 对 Ascend 后端进行性能测试。
+本文档记录在 Ascend 机器上准备 `vllm-ascend` 与 `sagellm` endpoint 对比时，当前仓库采用的安全策略与最小可执行流程。
 
-## 📋 MVP 目标
+目标：后续继续做性能比较时，不需要再重新摸索环境安装、启动命令与判活步骤。
 
-提供 Ascend demo 配置，演示如何在 Ascend 设备上运行 Year 1 Demo Contract 的 benchmark 测试。
+## 1. 适用范围
 
-**注意**：MVP 阶段不要求真实 Ascend 硬件，可以使用 CPU fallback 进行演示。
+- 机器具备 Ascend NPU（`npu-smi` 可用）
+- 使用 OpenAI-compatible endpoint 做 live benchmark
+- 对比对象：
+  - `vllm-ascend`
+  - `sagellm serve --benchmark-mode`
 
-## 🚀 快速开始
+## 2. 推荐策略
 
-### 1. Python 脚本方式
+当前仓库默认采用下面这条策略，而不是把完整 `vllm` 栈直接塞进 umbrella 主环境：
 
-```bash
-# 运行 Ascend demo（自动检测硬件可用性）
-cd /home/shuhao/sagellm-benchmark
-python examples/ascend_demo.py
-```
+1. `sagellm` 主环境保持稳定，不自动安装完整 `vllm + vllm-ascend` endpoint 栈。
+2. `vllm-ascend` 对比侧必须使用“同版本 `vllm` + `vllm-ascend`”的官方矩阵。
+3. 对比环境必须与主 `sagellm` 环境隔离，推荐使用单独的非 `base` conda 环境，或官方 `vllm-ascend` 容器。
 
-**行为说明**：
-- 如果 `torch_npu` 可用 → 使用 Ascend 引擎
-- 如果 `torch_npu` 不可用 → 自动 fallback 到 CPU（附带警告信息）
+原因：官方文档和 FAQ 都要求 `vllm-ascend` 与 `vllm` 保持同版本；而当前机器上旧的本地 `0.11.0 + torch 2.7.1` 插件栈在加入完整 `vllm` 后会出现 pip resolver 冲突，不能再假装这是“一键可安装的 endpoint compare 环境”。
 
-### 2. YAML 配置方式
+当前机器上已观测到的冲突点：
 
-```bash
-# 使用 YAML 配置文件（未来支持）
-sage-llm benchmark --config examples/ascend_config_example.yaml
-```
+- 本地旧栈：`torch==2.7.1`、`torch-npu==2.7.1`、`vllm-ascend==0.11.0`
+- `pip install --dry-run vllm==0.11.0 ...` 解析结果要求 `vllm==0.11.0` 依赖 `torch==2.8.0`
+- 因此，当前旧栈不能直接扩展成完整 `vllm` endpoint benchmark 环境
 
-## 📁 文件说明
+## 3. 官方 profile
 
-| 文件 | 说明 |
-|------|------|
-| `ascend_demo.py` | Ascend benchmark 示例脚本（Python API） |
-| `ascend_config_example.yaml` | Ascend 配置示例（YAML 格式） |
+当前脚本支持的官方 profile：
 
-## ⚙️ 配置说明
+- `official-v0.11.0`
+  - 目标 CANN: `8.3.x`
+  - 目标栈: `vllm==0.11.0`, `vllm-ascend==0.11.0`
+- `official-v0.13.0`
+  - 目标 CANN: `8.5.x`
+  - 目标栈: `vllm==0.13.0`, `vllm-ascend==0.13.0`
 
-### Engine 配置
+默认 `BENCH_ASCEND_PROFILE=auto`，脚本会按主机 CANN 版本自动选 profile：
 
-```yaml
-engine:
-  type: ascend              # 必须指定为 "ascend"
-  device: "ascend:0"        # NPU 设备 ID
-  model_path: "model_path"  # 模型路径
-  max_new_tokens: 128       # 最大生成 tokens
-```
+- `8.5.x` -> `official-v0.13.0`
+- `8.3.x` -> `official-v0.11.0`
+- 其他版本 -> 直接 fail-fast，并提示改用匹配机器或官方容器
 
-### Workload 配置
+对于当前这类 `8.1.RC1` 主机，优先建议直接使用容器化路径，而不是继续尝试本机 Python 环境拼装完整 endpoint 栈。
 
-遵循 Year 1 Demo Contract 的三段式测试：
+## 4. 容器化启动 `vllm-ascend`（推荐于旧 CANN 主机）
 
-1. **Short Input**：128 tokens prompt → 128 tokens output
-2. **Long Input**：2048 tokens prompt → 512 tokens output
-3. **Stress Test**：并发请求，触发 KV 驱逐
-
-### Fallback 配置
-
-```yaml
-fallback:
-  enable: true   # 启用 fallback
-  backend: "cpu" # fallback 到 CPU
-```
-
-## 📊 预期输出
-
-Benchmark 运行后会产出以下指标（符合 Year 1 Demo Contract）：
-
-```json
-{
-  "ttft_ms": 45.2,
-  "tbt_ms": 12.5,
-  "tpot_ms": 12.5,
-  "throughput_tps": 80.0,
-  "peak_mem_mb": 24576,
-  "error_rate": 0.02,
-  "kv_used_tokens": 4096,
-  "kv_used_bytes": 134217728,
-  "prefix_hit_rate": 0.85,
-  "evict_count": 3,
-  "evict_ms": 2.1,
-  "spec_accept_rate": 0.72
-}
-```
-
-## 🔍 Observability
-
-所有操作必须包含以下字段：
-
-- `trace_id`: 请求追踪 ID
-- `request_id`: 请求标识符
-- `engine_id`: 引擎实例标识符
-- `timestamps`: 时间戳（queued_at, scheduled_at, executed_at, completed_at）
-
-## 🧪 测试模式
-
-### Mock 模式（无真实硬件）
-
-当 Ascend 硬件不可用时，系统会自动 fallback 到 CPU：
+仓库内提供了容器启动脚本：
 
 ```bash
-⚠️  Ascend backend not available: No module named 'torch_npu'
-   Falling back to CPU for demo purposes...
+cd sagellm-benchmark
+bash scripts/run_vllm_ascend_container.sh start
 ```
 
-这种模式适用于：
-- CI/CD 测试
-- 开发环境调试
-- 无 Ascend 硬件的演示
+默认行为：
 
-### 真实硬件模式
+- 使用 `quay.io/ascend/vllm-ascend:v0.11.0-openeuler`
+- 使用 `sudo -n docker`
+- 映射 `/dev/davinci*`、`/dev/davinci_manager`、`/dev/devmm_svm`、`/dev/hisi_hdc`
+- 使用 host network，默认监听 `127.0.0.1:8000`
+- 挂载本机模型缓存到容器内 `/root/.cache`
+- 启动后自动轮询 `/v1/models` 做 ready check
 
-当 `torch_npu` 可用时，会使用真实 Ascend 设备：
+常用操作：
 
 ```bash
-🚀 Starting benchmark with Ascend engine...
-   Device: ascend:0
-   Model: sshleifer/tiny-gpt2
+bash scripts/run_vllm_ascend_container.sh status
+bash scripts/run_vllm_ascend_container.sh logs
+bash scripts/run_vllm_ascend_container.sh stop
 ```
 
-## 📝 开发规范
+常用参数：
 
-遵循 sageLLM 核心开发原则：
+```bash
+VLLM_ASCEND_MODEL=Qwen/Qwen2.5-0.5B-Instruct \
+VLLM_ASCEND_PORT=8000 \
+VLLM_ASCEND_TP_SIZE=1 \
+bash scripts/run_vllm_ascend_container.sh start
+```
 
-1. **Protocol-First**：配置字段遵循 Protocol v0.1
-2. **CPU-First**：必须支持 CPU fallback
-3. **Fail-Fast**：配置错误必须明确报错
-4. **Observability-First**：所有操作必须产出结构化日志和指标
+如果只想使用部分卡：
 
-## 🔗 相关文档
+```bash
+VLLM_ASCEND_DEVICES=0,1 bash scripts/run_vllm_ascend_container.sh start
+```
 
-- Protocol v0.1: `sagellm-docs/docs/specs/protocol_v0.1.md`
-- Task F 任务书: `sagellm-docs/agent_tasks/ascend_engine_mvp_tasks.md`
-- Year 1 Demo Contract: `sagellm-docs/docs/demo_contract.md`
+## 5. 一键安装对比环境
 
-## ✅ MVP 验收标准
+推荐直接使用 CLI：
 
-- [x] 提供 Ascend demo 配置示例（Python + YAML）
-- [x] 支持自动 fallback 到 CPU
-- [x] 配置符合 Year 1 Demo Contract
-- [x] 文档说明清晰完整
+```bash
+sagellm-benchmark vllm-compare install-ascend
+```
 
-## 📞 联系方式
+兼容脚本 `scripts/setup_vllm_ascend_compare_env.sh` 仍保留，但只是对上述 CLI 的薄包装。
 
-如有问题，请联系：
-- Task F 负责人：（待补充）
-- sageLLM 团队：IntelliStream
+默认行为：
+
+- 优先使用 `BENCH_VLLM_ASCEND_PY`
+- 若未显式传入，则使用当前已激活的非 `base` conda 环境对应的 `python`
+- 默认按 `BENCH_ASCEND_PROFILE` 选择官方矩阵
+- 若主机 CANN 版本与 profile 不匹配，会在安装前直接失败
+- 默认要求完整 endpoint compare 栈包含 `vllm` 与 `vllm-ascend`
+- 在真正安装前先执行 `pip install --dry-run` 做 resolver 校验
+- 若当前版本矩阵不可解，则 fail-fast 退出，不污染当前环境
+- 仅在 dry-run 可解时才继续安装并执行最小 Ascend 烟测（`torch + torch_npu + npu tensor`）
+
+重要约束：
+
+- 脚本默认拒绝在主 `sagellm` conda 环境中执行
+- 如确需覆盖该保护，必须显式传入 `BENCH_VLLM_ASCEND_ALLOW_MAIN_ENV=1`
+
+若机器的 Ascend toolkit 不在标准 `/usr/local/Ascend/ascend-toolkit` 布局下，需显式传入：
+
+```bash
+SAGELLM_ASCEND_TOOLKIT_HOME=/actual/ascend/toolkit/path \
+bash scripts/setup_vllm_ascend_compare_env.sh
+```
+
+如需覆盖 Python 路径：
+
+```bash
+BENCH_VLLM_ASCEND_PY=/path/to/python sagellm-benchmark vllm-compare install-ascend
+```
+
+如需显式指定官方 profile：
+
+```bash
+BENCH_ASCEND_PROFILE=official-v0.13.0 bash scripts/setup_vllm_ascend_compare_env.sh
+```
+
+如需覆盖 profile 内的单项版本，可显式传入：
+
+```bash
+BENCH_VLLM_VERSION=0.13.0 \
+BENCH_VLLM_ASCEND_VERSION=0.13.0 \
+BENCH_TORCH_VERSION=2.8.0 \
+BENCH_TORCH_NPU_VERSION=2.8.0.post2 \
+bash scripts/setup_vllm_ascend_compare_env.sh
+```
+
+前提是当前机器的 CANN / torch-npu / Python 版本也满足该官方矩阵。
+
+## 6. 启动前烟测
+
+在任意 `vllm-ascend` 启动前，必须先注入 Ascend 运行时环境：
+
+```bash
+cd /home/user8/sagellm
+./scripts/sagellm_with_ascend_env.sh python - <<'PY'
+import torch, torch_npu
+print('torch', torch.__version__)
+print('torch_npu', torch_npu.__version__)
+print('npu_available', torch.npu.is_available())
+torch.npu.set_device('npu:0')
+x = torch.ones(1, device='npu')
+print('tensor_ok', (x + 1).cpu().tolist())
+PY
+```
+
+任一步失败都不应继续 benchmark。
+
+## 7. 启动 `vllm-ascend`
+
+若使用容器化路径，可直接跳过本节，改用上一节的容器脚本。
+
+只有在第 3 步的 compare env 脚本成功完成，或者你使用了官方容器 / 已验证专用环境时，才应该继续这一步。
+
+```bash
+cd /home/user8/sagellm
+./scripts/sagellm_with_ascend_env.sh \
+  python \
+  -m vllm.entrypoints.openai.api_server \
+  --model Qwen/Qwen2.5-0.5B-Instruct \
+  --host 127.0.0.1 \
+  --port 8000 \
+  > /tmp/vllm_ascend_8000.log 2>&1
+```
+
+说明：
+
+- 必须通过 `sagellm_with_ascend_env.sh` 注入环境
+- 首次启动可能需要等待模型下载与 ACL graph capture
+
+判活要求：
+
+```bash
+ss -ltnp | grep ':8000'
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/v1/models
+```
+
+## 8. 启动 `sagellm`
+
+用于 benchmark 时，必须显式开启 `--benchmark-mode`，避免 canary 影响启动与测量：
+
+```bash
+cd /home/user8/sagellm
+HF_ENDPOINT=https://hf-mirror.com \
+SAGELLM_ASCEND_TOOLKIT_HOME=/usr/local/Ascend/ascend-toolkit/8.3.RC2 \
+./scripts/sagellm_with_ascend_env.sh \
+  sagellm serve \
+  --backend ascend \
+  --model Qwen/Qwen2.5-0.5B-Instruct \
+  --host 127.0.0.1 \
+  --port 8901 \
+  --benchmark-mode \
+  > /tmp/sagellm_8901.log 2>&1
+```
+
+判活要求：
+
+```bash
+ss -ltnp | grep ':8901'
+curl http://127.0.0.1:8901/health
+curl http://127.0.0.1:8901/v1/models
+```
+
+## 9. 运行对比 benchmark
+
+```bash
+BATCH_SIZES=1,2,4 MAX_OUTPUT_TOKENS=64 REQUEST_TIMEOUT=180 \
+sagellm-benchmark vllm-compare run \
+  --vllm-url http://127.0.0.1:8000/v1 \
+  --sagellm-url http://127.0.0.1:8901/v1 \
+  --model Qwen/Qwen2.5-0.5B-Instruct
+```
+
+不再推荐也不再保留旧的 shell compare wrapper；统一使用上面的 canonical CLI。
+
+输出目录默认在：
+
+```text
+benchmark_results/compare_<timestamp>/
+```
+
+包含：
+
+- `sagellm.json`
+- `sagellm.md`
+- `vllm.json`
+- `vllm.md`
+- `comparison.md`
+- `comparison.json`
+
+## 10. 当前状态
+
+当前仓库已经完成的工作是：
+
+- `sagellm` 主环境的 Ascend 启动链路已修通
+- `sagellm-benchmark` 已提供 compare env 预检脚本
+- `sagellm-benchmark` 已提供 `vllm-ascend` 官方容器启动脚本，适合作为旧 CANN 主机上的优先对比路径
+- compare env 脚本现在会先验证完整 `vllm + vllm-ascend` 栈是否可解
+- 对于当前这台机器上的旧 `0.11.0 + torch 2.7.1` 本地栈，脚本会明确报告 resolver 冲突，而不是继续误装
+
+尚未被当前仓库宣称为默认已验证的内容：
+
+- “在本机当前主环境中，直接一键安装完整 `vllm` endpoint compare 栈”
+- “当前文档中的某组性能数字可作为新的默认基线”
+
+## 11. 注意事项
+
+- 不要把华为 Ascend 安装包（`.run` / `.deb`）提交到仓库；它们体积大，且通常应按上游许可与分发方式获取
+- 推荐把“版本矩阵 + 下载地址 + 脚本”固化到文档和脚本，而不是提交二进制包
+- 若 `vllm-ascend` 首次启动慢，优先等待模型下载和 ACL graph capture 完成，不要过早判定失败
+- 若 `sagellm` benchmark 启动失败，优先确认是否遗漏 `--benchmark-mode`
+- 若 compare env 脚本在 dry-run 阶段失败，优先调整到官方同版本矩阵，或改用官方 `vllm-ascend` 容器，而不是强行污染主 `sagellm` 环境
+- 若脚本在 profile 选择阶段因主机 CANN 版本不匹配而失败，这是预期保护；当前脚本不会把 `8.1.x` 这类旧环境伪装成“官方 endpoint benchmark 可支持环境”。

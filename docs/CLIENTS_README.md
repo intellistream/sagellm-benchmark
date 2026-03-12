@@ -233,20 +233,25 @@ async with client:
 
 ## 依赖安装
 
-根据使用的客户端安装依赖：
+根据使用的客户端安装依赖。benchmark extras 是唯一权威声明；单独的安装脚本只用于便利地复现特定环境矩阵。
+
+如果使用 `./quickstart.sh`，脚本会自动补装与当前机器匹配的 vLLM compare extra；这只是对 extras 的便捷封装，不是新的依赖来源。
 
 ```bash
-# OpenAIClient
-pip install isagellm-benchmark openai
+# GatewayClient / OpenAI-compatible endpoint
+pip install -U isagellm-benchmark
 
 # VLLMClient
-pip install isagellm-benchmark vllm openai
+pip install -U 'isagellm-benchmark[vllm-client]'
+
+# VLLMClient on Ascend
+pip install -U 'isagellm-benchmark[vllm-ascend-client]'
 
 # LMDeployClient
-pip install isagellm-benchmark lmdeploy httpx
+pip install -U 'isagellm-benchmark[lmdeploy-client]'
 
 # SageLLMClient
-pip install isagellm-benchmark isagellm-backend
+pip install -U isagellm-benchmark
 ```
 
 ## 完整示例

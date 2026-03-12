@@ -33,7 +33,9 @@ async def demo_gateway_client() -> None:
     try:
         from sagellm_benchmark.clients.openai_client import GatewayClient
     except ImportError:
-        logger.error("openai package not installed. Install with: pip install openai")
+        logger.error(
+            "GatewayClient dependencies are missing. Install with: pip install -U isagellm-benchmark"
+        )
         return
 
     # Connect to local sagellm-gateway
@@ -136,41 +138,8 @@ async def demo_batch_execution() -> None:
     logger.info("Example: Use GatewayClient with sagellm-gateway")
     return
 
-    # Disabled code - kept for reference
-    # client = some_real_client()
-    # requests = [
-    #     BenchmarkRequest(
-    #         prompt=f"Question {i}: What is {i} + {i}?",
-    #         max_tokens=20,
-    #         request_id=f"batch-{i:03d}",
-    #         model="cpu-model",
-    #     )
-    #     for i in range(5)
-    # ]
-
-    # Sequential execution
-    logger.info("Running SEQUENTIAL batch...")
-    import time
-
-    start = time.perf_counter()
-    seq_results = await client.generate_batch(requests, concurrent=False)
-    seq_time = time.perf_counter() - start
-    logger.info(f"Sequential: {len(seq_results)} requests in {seq_time:.2f}s")
-
-    # Concurrent execution
-    logger.info("Running CONCURRENT batch...")
-    start = time.perf_counter()
-    conc_results = await client.generate_batch(requests, concurrent=True)
-    conc_time = time.perf_counter() - start
-    logger.info(f"Concurrent: {len(conc_results)} requests in {conc_time:.2f}s")
-    logger.info(f"Speedup: {seq_time / conc_time:.2f}x")
-
-    # Verify order preservation
-    for i, result in enumerate(conc_results):
-        assert result.request_id == f"batch-{i:03d}"
-    logger.info("✓ Order preserved in concurrent mode")
-
-    await client.close()
+    # NOTE: kept intentionally minimal to avoid stale pseudo-code drift.
+    # Batch demonstration should be implemented against real running services only.
 
 
 async def demo_error_handling() -> None:
@@ -185,9 +154,8 @@ async def demo_error_handling() -> None:
     logger.info("Example: Use GatewayClient with error simulation")
     return
 
-    # Disabled code - MockClient was removed
-    # error_client = some_real_client()
-    # Test error rates and timeouts with real backend
+    # NOTE: Error-handling demonstration should be implemented against
+    # a real running backend service.
 
 
 async def main() -> None:
