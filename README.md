@@ -120,6 +120,14 @@ Dependency policy:
 
 ## Quick Start
 
+Recommended benchmark mainline:
+
+- `sagellm-benchmark run` for local workload benchmarks.
+- `sagellm-benchmark compare` for live endpoint benchmarking.
+- `sagellm-benchmark vllm-compare run` only as a semantic convenience wrapper over `compare`.
+- `./run_benchmark.sh` only as a compatibility shell wrapper.
+- `sagellm-benchmark report` only as a reporting helper over existing artifacts.
+
 ```bash
 # Run all Q1-Q8 workloads with CPU backend
 sagellm-benchmark run --workload all --backend cpu --output ./benchmark_results
@@ -127,7 +135,7 @@ sagellm-benchmark run --workload all --backend cpu --output ./benchmark_results
 # Run a single query workload
 sagellm-benchmark run --workload Q1 --backend cpu
 
-# Generate a markdown report
+# Generate a markdown report from existing artifacts
 sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format markdown
 
 # Run migrated performance benchmarks
@@ -140,7 +148,16 @@ sagellm-benchmark compare \
    --target vllm=http://127.0.0.1:8901/v1 \
    --model Qwen/Qwen2.5-0.5B-Instruct
 
-# If GPU memory is tight, capture the two engines sequentially and compare offline.
+# Run the explicit publish workflow after a compare completes
+sagellm-benchmark compare \
+   --target sagellm=http://127.0.0.1:8902/v1 \
+   --target vllm=http://127.0.0.1:8901/v1 \
+   --model Qwen/Qwen2.5-0.5B-Instruct \
+   --hardware-family cuda \
+   --publish \
+   --publish-hf-dataset intellistream/sagellm-benchmark-results
+
+# Compatibility helpers for constrained environments: sequential capture, then offline summary.
 sagellm-benchmark compare-record \
    --label sagellm \
    --url http://127.0.0.1:8901/v1 \
@@ -179,7 +196,7 @@ sagellm-benchmark compare \
    --model Qwen/Qwen2.5-0.5B-Instruct \
    --prompt-cleanup
 
-# Convenience profile for the standard sageLLM vs vLLM layout
+# Semantic convenience wrapper over `compare` for the standard sageLLM vs vLLM layout
 sagellm-benchmark vllm-compare run \
    --sagellm-url http://127.0.0.1:8901/v1 \
    --vllm-url http://127.0.0.1:8000/v1 \
@@ -228,10 +245,24 @@ docker logs sagellm-benchmark-vllm | tail -n 200
 # Generate charts (PNG/PDF, dark theme)
 sagellm-benchmark perf --type e2e --plot --plot-format png --plot-format pdf --theme dark
 
-# Keep the default Q1-Q8 CPU flow
+# Compatibility shell wrapper over `sagellm-benchmark run`
 ./run_benchmark.sh
 
-# Run the convergence validation loop against two live endpoints
+# Explicit publish dry-run from the benchmark CLI main path
+sagellm-benchmark run \
+   --workload Q1 \
+   --backend cpu \
+   --model sshleifer/tiny-gpt2 \
+   --output ./benchmark_results/publish_demo \
+   --publish \
+   --publish-dry-run
+
+# Re-run publish later for an existing artifact directory
+sagellm-benchmark publish \
+   --input ./benchmark_results/publish_demo \
+   --dry-run
+
+# Compatibility shell wrapper over `sagellm-benchmark compare` plus extra probes
 ./run_benchmark.sh --profile convergence \
    --target before=http://127.0.0.1:8901/v1 \
    --target after=http://127.0.0.1:8902/v1 \
@@ -247,6 +278,8 @@ When validating the mainline architecture rather than just endpoint speed, prese
 - path evidence: `*_log_probe.json`
 
 ## Convergence Validation Loop
+
+`convergence` is not an independent benchmark pipeline. It is a compatibility shell wrapper that reuses `sagellm-benchmark compare`, then adds `/info`, `/metrics`, and optional log probe packaging.
 
 Use the benchmark repo as the external validation layer for recent `sagellm-core` and `sagellm-backend` convergence work. The convergence profile keeps runtime selection outside `sagellm-core`, then captures both benchmark deltas and endpoint observability snapshots.
 

@@ -32,6 +32,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _ensure_hf_endpoint_defaults() -> None:
+    """Set benchmark-safe Hugging Face endpoint defaults before hub imports.
+
+    `transformers` / `huggingface_hub` may snapshot endpoint-related environment
+    variables during import, so benchmark code must initialize them before any
+    lazy model/tokenizer import path.
+    """
+    os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
+
 class GatewayClient(BenchmarkClient):
     """Client for OpenAI-protocol HTTP APIs (sagellm-gateway, etc.).
 
@@ -215,6 +226,7 @@ class GatewayClient(BenchmarkClient):
         if model_id in self._tokenizer_cache:
             return self._tokenizer_cache[model_id]
 
+        _ensure_hf_endpoint_defaults()
         try:
             from transformers import AutoTokenizer
         except ImportError:
@@ -226,7 +238,6 @@ class GatewayClient(BenchmarkClient):
             return None
 
         tokenizer_source, local_only = self._resolve_tokenizer_source(model_id)
-        os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
         try:
             tokenizer = AutoTokenizer.from_pretrained(
                 tokenizer_source,

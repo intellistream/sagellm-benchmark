@@ -133,7 +133,14 @@ def test_compare_generates_files(monkeypatch):
     )
     monkeypatch.setattr(
         "sagellm_benchmark.cli._capture_target_runtime_artifacts",
-        lambda **kwargs: {},
+        lambda **kwargs: {
+            "info_json": "dummy-info.json",
+            "core_telemetry_json": "dummy-telemetry.json",
+        },
+    )
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._validate_sagellm_explicit_decode_runtime",
+        lambda **kwargs: None,
     )
 
     runner = CliRunner()
@@ -157,10 +164,16 @@ def test_compare_generates_files(monkeypatch):
         )
         assert result.exit_code == 0
         assert (output_dir / "sagellm.json").exists()
+        assert (output_dir / "sagellm.canonical.json").exists()
         assert (output_dir / "sagellm.parity.json").exists()
+        assert (output_dir / "sagellm_leaderboard.json").exists()
         assert (output_dir / "vllm.json").exists()
+        assert (output_dir / "vllm.canonical.json").exists()
         assert (output_dir / "vllm.parity.json").exists()
+        assert (output_dir / "vllm_leaderboard.json").exists()
         assert (output_dir / "comparison.json").exists()
+        assert (output_dir / "comparison.canonical.json").exists()
+        assert (output_dir / "leaderboard_manifest.json").exists()
 
         with open(output_dir / "sagellm.parity.json") as f:
             parity_payload = json.load(f)
@@ -168,11 +181,97 @@ def test_compare_generates_files(monkeypatch):
         assert parity_payload["hardware_family"] == "cuda"
         assert parity_payload["scenarios"][0]["has_step_evidence"] is False
 
+        with open(output_dir / "sagellm.canonical.json") as f:
+            canonical_payload = json.load(f)
+        assert canonical_payload["schema_version"] == "canonical-benchmark-result/v1"
+        assert canonical_payload["artifact_kind"] == "execution_result"
+        assert canonical_payload["artifacts"]["leaderboard_json"].endswith(
+            "sagellm_leaderboard.json"
+        )
+
+        with open(output_dir / "sagellm_leaderboard.json") as f:
+            leaderboard_payload = json.load(f)
+        assert leaderboard_payload["engine"] == "sagellm"
+        assert leaderboard_payload["metadata"]["hardware_family"] == "cuda"
+        assert leaderboard_payload["metadata"]["idempotency_key"]
+
         with open(output_dir / "comparison.json") as f:
             payload = json.load(f)
         assert payload["kind"] == "compare"
         assert payload["baseline"] == "sagellm"
         assert len(payload["targets"]) == 2
+        manifest = json.loads((output_dir / "leaderboard_manifest.json").read_text())
+        assert manifest["schema_version"] == "leaderboard-export-manifest/v1"
+        assert len(manifest["entries"]) == 2
+
+
+def test_vllm_compare_run_generates_canonical_artifacts(monkeypatch):
+    def fake_run_e2e_model_benchmarks(**kwargs):
+        return [
+            {
+                "model": kwargs["models"][0],
+                "precision": "live",
+                "scenario": "short_b1",
+                "batch_size": 1,
+                "ttft_ms": 8.0,
+                "tbt_ms": 1.5,
+                "throughput_tps": 120.0,
+                "output_throughput_tps": 120.0,
+                "latency_p50_ms": 10.0,
+                "latency_p95_ms": 12.0,
+                "latency_p99_ms": 13.0,
+                "memory_mb": 0.0,
+                "mode": "live",
+                "successful_requests": 1,
+                "failed_requests": 0,
+            }
+        ]
+
+    monkeypatch.setattr(
+        "sagellm_benchmark.performance.model_benchmarks.run_e2e_model_benchmarks",
+        fake_run_e2e_model_benchmarks,
+    )
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._capture_target_runtime_artifacts",
+        lambda **kwargs: {
+            "info_json": "dummy-info.json",
+            "core_telemetry_json": "dummy-telemetry.json",
+        },
+    )
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._validate_sagellm_explicit_decode_runtime",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._export_compatibility_leaderboard_artifacts",
+        lambda **kwargs: {},
+    )
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        output_dir = Path("vllm_compare_out")
+        result = runner.invoke(
+            main,
+            [
+                "vllm-compare",
+                "run",
+                "--sagellm-url",
+                "http://127.0.0.1:8901/v1",
+                "--vllm-url",
+                "http://127.0.0.1:8000/v1",
+                "--model",
+                "Qwen/Qwen2.5-0.5B-Instruct",
+                "--hardware-family",
+                "ascend",
+                "--output-dir",
+                str(output_dir),
+                "--no-prompt-cleanup",
+            ],
+        )
+        assert result.exit_code == 0
+        assert (output_dir / "sagellm.canonical.json").exists()
+        assert (output_dir / "vllm.canonical.json").exists()
+        assert (output_dir / "comparison.canonical.json").exists()
 
 
 def test_parity_gate_convert_core_telemetry_writes_normalized_artifact() -> None:
@@ -411,11 +510,14 @@ def test_vllm_compare_run_generates_files(monkeypatch):
     )
     monkeypatch.setattr(
         "sagellm_benchmark.cli._capture_target_runtime_artifacts",
-        lambda **kwargs: {},
+        lambda **kwargs: {
+            "info_json": "dummy-info.json",
+            "core_telemetry_json": "dummy-telemetry.json",
+        },
     )
     monkeypatch.setattr(
-        "sagellm_benchmark.cli._capture_target_runtime_artifacts",
-        lambda **kwargs: {},
+        "sagellm_benchmark.cli._validate_sagellm_explicit_decode_runtime",
+        lambda **kwargs: None,
     )
 
     runner = CliRunner()
@@ -482,11 +584,14 @@ def test_compare_record_generates_files(monkeypatch):
     )
     monkeypatch.setattr(
         "sagellm_benchmark.cli._capture_target_runtime_artifacts",
-        lambda **kwargs: {},
+        lambda **kwargs: {
+            "info_json": "dummy-info.json",
+            "core_telemetry_json": "dummy-telemetry.json",
+        },
     )
     monkeypatch.setattr(
-        "sagellm_benchmark.cli._capture_target_runtime_artifacts",
-        lambda **kwargs: {},
+        "sagellm_benchmark.cli._validate_sagellm_explicit_decode_runtime",
+        lambda **kwargs: None,
     )
 
     runner = CliRunner()
@@ -566,6 +671,10 @@ def test_compare_record_auto_captures_core_telemetry_artifact(monkeypatch):
     monkeypatch.setattr(
         "sagellm_benchmark.cli._capture_target_runtime_artifacts",
         fake_capture_target_runtime_artifacts,
+    )
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._validate_sagellm_explicit_decode_runtime",
+        lambda **kwargs: None,
     )
 
     runner = CliRunner()
@@ -861,6 +970,10 @@ def test_compare_auto_captures_runtime_artifacts(monkeypatch):
         "sagellm_benchmark.cli._capture_target_runtime_artifacts",
         fake_capture_target_runtime_artifacts,
     )
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._validate_sagellm_explicit_decode_runtime",
+        lambda **kwargs: None,
+    )
 
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -952,6 +1065,10 @@ def test_compare_passes_target_commands(monkeypatch):
         return Path("compare_out")
 
     monkeypatch.setattr("sagellm_benchmark.cli._run_compare_command", fake_run_compare_command)
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._export_compatibility_leaderboard_artifacts",
+        lambda **kwargs: {},
+    )
 
     runner = CliRunner()
     result = runner.invoke(
@@ -991,6 +1108,10 @@ def test_vllm_compare_run_passes_start_commands(monkeypatch):
         return Path("compare_out")
 
     monkeypatch.setattr("sagellm_benchmark.cli._run_compare_command", fake_run_compare_command)
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._export_compatibility_leaderboard_artifacts",
+        lambda **kwargs: {},
+    )
 
     runner = CliRunner()
     result = runner.invoke(
@@ -1098,6 +1219,17 @@ def test_compare_prompt_cleanup_kills_local_targets(monkeypatch):
         fake_run_e2e_model_benchmarks,
     )
     monkeypatch.setattr(
+        "sagellm_benchmark.cli._capture_target_runtime_artifacts",
+        lambda **kwargs: {
+            "info_json": "dummy-info.json",
+            "core_telemetry_json": "dummy-telemetry.json",
+        },
+    )
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._validate_sagellm_explicit_decode_runtime",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
         "sagellm_benchmark.cli._discover_local_target_processes",
         lambda parsed_targets: [
             {
@@ -1171,6 +1303,17 @@ def test_compare_prompt_cleanup_can_leave_targets_running(monkeypatch):
     monkeypatch.setattr(
         "sagellm_benchmark.performance.model_benchmarks.run_e2e_model_benchmarks",
         fake_run_e2e_model_benchmarks,
+    )
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._capture_target_runtime_artifacts",
+        lambda **kwargs: {
+            "info_json": "dummy-info.json",
+            "core_telemetry_json": "dummy-telemetry.json",
+        },
+    )
+    monkeypatch.setattr(
+        "sagellm_benchmark.cli._validate_sagellm_explicit_decode_runtime",
+        lambda **kwargs: None,
     )
     monkeypatch.setattr(
         "sagellm_benchmark.cli._discover_local_target_processes",

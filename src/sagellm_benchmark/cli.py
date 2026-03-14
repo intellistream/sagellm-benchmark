@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import os
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -24,7 +24,15 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from sagellm_benchmark.canonical_artifacts import (
+    build_compare_summary_artifact,
+    build_live_compare_artifact,
+    build_local_run_artifact,
+    export_standard_leaderboard_artifacts,
+    write_canonical_artifact,
+)
 from sagellm_benchmark.core_telemetry import build_core_decode_telemetry_artifact
+from sagellm_benchmark.exporters import LeaderboardExporter
 from sagellm_benchmark.nonstream_compare import (
     NonStreamCompareConfig,
     parse_target_spec,
@@ -43,6 +51,445 @@ from sagellm_benchmark.runtime_consistency import (
 )
 
 console = Console()
+
+HF_SNAPSHOT_FILES = {
+    "single": "leaderboard_single.json",
+    "multi": "leaderboard_multi.json",
+    "marker": "last_updated.json",
+}
+DEFAULT_PUBLISH_DATASET = "intellistream/sagellm-benchmark-results"
+
+
+def _print_compatibility_layer_notice(
+    *,
+    entrypoint: str,
+    behavior: str,
+    recommended_path: str,
+) -> None:
+    console.print(
+        "[yellow]Compatibility layer:[/yellow] "
+        f"{entrypoint} is retained for compatibility and now reuses {behavior}. "
+        f"Recommended path: {recommended_path}"
+    )
+
+
+def _export_compatibility_leaderboard_artifacts(
+    *,
+    benchmark_output_dir: Path,
+    source_command: str,
+) -> dict[str, object]:
+    console.print(
+        "[yellow]Compatibility export:[/yellow] "
+        f"{source_command} writes canonical artifacts first; "
+        "*_leaderboard.json and leaderboard_manifest.json are derived compatibility artifacts "
+        "for legacy website/HF consumers only."
+    )
+    try:
+        export_summary = export_standard_leaderboard_artifacts(benchmark_output_dir)
+    except Exception as exc:
+        raise click.ClickException(f"compatibility leaderboard export failure: {exc}") from exc
+
+    console.print(
+        f"[green]✓[/green] compatibility export: validated {export_summary['validated_count']} canonical artifacts, "
+        f"exported {export_summary['exported_count']} leaderboard artifacts"
+    )
+    console.print(f"Manifest: {export_summary['manifest_path']}")
+    return export_summary
+
+
+def _add_publish_options(command):
+    command = click.option(
+        "--publish-website-dir",
+        type=click.Path(file_okay=False, dir_okay=True),
+        default=None,
+        help=(
+            "Optional sagellm-website repo root. When set, publish will sync generated "
+            "website-ready snapshots into <website>/data/."
+        ),
+    )(command)
+    command = click.option(
+        "--publish-hf-private/--publish-hf-public",
+        default=False,
+        help="Create the Hugging Face dataset as private/public if it does not exist.",
+    )(command)
+    command = click.option(
+        "--publish-hf-token",
+        type=str,
+        default=None,
+        help="Hugging Face token for publish upload (fallback to HF_TOKEN).",
+    )(command)
+    command = click.option(
+        "--publish-hf-dataset",
+        type=str,
+        default=DEFAULT_PUBLISH_DATASET,
+        show_default=True,
+        help="Hugging Face dataset repo ID used by publish.",
+    )(command)
+    command = click.option(
+        "--publish-dry-run/--no-publish-dry-run",
+        default=False,
+        help="Validate and preview the publish workflow without uploading or syncing files.",
+    )(command)
+    command = click.option(
+        "--publish/--no-publish",
+        default=False,
+        help="Run explicit publish workflow after benchmark success.",
+    )(command)
+    return command
+
+
+def _write_json_file(path: Path, payload: dict | list) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def _load_standard_leaderboard_entries(input_dir: Path) -> list[dict]:
+    entries, parse_errors = LeaderboardExporter.collect_entries_from_directory(input_dir)
+    if parse_errors:
+        raise ValueError("\n".join(parse_errors))
+    if not entries:
+        raise ValueError(f"No standard leaderboard exports found under: {input_dir}")
+    return entries
+
+
+def _upload_hf_exports(
+    *,
+    dataset: str,
+    input_dir: Path,
+    token: str | None,
+    private: bool,
+    dry_run: bool,
+) -> dict[str, object]:
+    hf_api_cls = None
+    hf_hub_download = None
+    if not dry_run:
+        try:
+            from huggingface_hub import HfApi, hf_hub_download
+
+            hf_api_cls = HfApi
+        except ImportError as exc:
+            raise click.ClickException("missing dependency: huggingface_hub") from exc
+
+    resolved_token = token or os.getenv("HF_TOKEN")
+    if not resolved_token and not dry_run:
+        raise click.ClickException("HF token not provided; use --publish-hf-token or set HF_TOKEN")
+
+    hf_endpoint = os.getenv("HF_ENDPOINT", "https://huggingface.co")
+    os.environ["HF_ENDPOINT"] = hf_endpoint
+
+    collected_entries = _load_standard_leaderboard_entries(input_dir)
+
+    canonical_entries: dict[str, dict] = {}
+    for entry in collected_entries:
+        entry_with_key = LeaderboardExporter.annotate_entry_identity(entry)
+        key = build_idempotency_key(entry_with_key)
+        existing = canonical_entries.get(key)
+        canonical_entries[key] = (
+            _prefer_newer_entry(existing, entry_with_key) if existing else entry_with_key
+        )
+
+    if not canonical_entries:
+        raise click.ClickException("No valid leaderboard entries found for upload")
+
+    remote_entries: list[dict] = []
+    api = None
+    if not dry_run:
+        api = hf_api_cls(endpoint=hf_endpoint, token=resolved_token)
+
+        try:
+            api.repo_info(repo_id=dataset, repo_type="dataset")
+        except Exception:
+            api.create_repo(repo_id=dataset, repo_type="dataset", private=private)
+
+        for snapshot_name in (HF_SNAPSHOT_FILES["single"], HF_SNAPSHOT_FILES["multi"]):
+            try:
+                remote_file = hf_hub_download(
+                    repo_id=dataset,
+                    filename=snapshot_name,
+                    repo_type="dataset",
+                    token=resolved_token,
+                    endpoint=hf_endpoint,
+                )
+            except Exception:
+                continue
+
+            remote_payload = json.loads(Path(remote_file).read_text(encoding="utf-8"))
+            if not isinstance(remote_payload, list):
+                raise click.ClickException(f"Remote snapshot {snapshot_name} is not a JSON array")
+
+            for index, entry in enumerate(remote_payload):
+                remote_entries.append(
+                    LeaderboardExporter.validate_leaderboard_entry(
+                        entry,
+                        label=f"remote snapshot {snapshot_name}[{index}]",
+                    )
+                )
+
+    merged_entries = list(remote_entries)
+    merged_entries.extend(canonical_entries.values())
+    snapshots = LeaderboardExporter.build_snapshot_payloads(merged_entries)
+    marker_payload = {"last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+    if dry_run:
+        return {
+            "dry_run": True,
+            "endpoint": hf_endpoint,
+            "canonical_entry_count": len(canonical_entries),
+            "snapshot_counts": {
+                "single": len(snapshots["single"]),
+                "multi": len(snapshots["multi"]),
+            },
+        }
+
+    upload_errors: list[str] = []
+    skipped_count = 0
+    uploaded_count = 0
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Uploading canonical entries", total=len(canonical_entries))
+
+        for entry in canonical_entries.values():
+            path_in_repo = entry["canonical_path"]
+            try:
+                local_is_newer = True
+                try:
+                    remote_file = hf_hub_download(
+                        repo_id=dataset,
+                        filename=path_in_repo,
+                        repo_type="dataset",
+                        token=resolved_token,
+                        endpoint=hf_endpoint,
+                    )
+                    remote_payload = json.loads(Path(remote_file).read_text(encoding="utf-8"))
+                    remote_existing = _normalize_entries_payload(remote_payload)
+                    if remote_existing:
+                        preferred = _prefer_newer_entry(remote_existing[0], entry)
+                        local_is_newer = preferred is entry
+                except Exception:
+                    local_is_newer = True
+
+                if not local_is_newer:
+                    skipped_count += 1
+                    continue
+
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", encoding="utf-8", delete=False
+                ) as temp_file:
+                    json.dump(entry, temp_file, indent=2)
+                    temp_path = temp_file.name
+
+                api.upload_file(
+                    path_or_fileobj=temp_path,
+                    path_in_repo=path_in_repo,
+                    repo_id=dataset,
+                    repo_type="dataset",
+                    commit_message=(
+                        f"Upsert canonical leaderboard {path_in_repo} "
+                        f"({datetime.now().isoformat()})"
+                    ),
+                )
+                uploaded_count += 1
+                Path(temp_path).unlink(missing_ok=True)
+            except Exception as exc:
+                upload_errors.append(f"{path_in_repo}: {exc}")
+            finally:
+                progress.advance(task)
+
+    for snapshot_name, payload in (
+        (HF_SNAPSHOT_FILES["single"], snapshots["single"]),
+        (HF_SNAPSHOT_FILES["multi"], snapshots["multi"]),
+        (HF_SNAPSHOT_FILES["marker"], marker_payload),
+    ):
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", encoding="utf-8", delete=False
+            ) as temp_file:
+                json.dump(payload, temp_file, indent=2)
+                temp_path = temp_file.name
+
+            api.upload_file(
+                path_or_fileobj=temp_path,
+                path_in_repo=snapshot_name,
+                repo_id=dataset,
+                repo_type="dataset",
+                commit_message=(
+                    f"Update HF leaderboard snapshot {snapshot_name} ({datetime.now().isoformat()})"
+                ),
+            )
+            Path(temp_path).unlink(missing_ok=True)
+        except Exception as exc:
+            upload_errors.append(f"{snapshot_name}: {exc}")
+
+    if upload_errors:
+        raise click.ClickException("\n".join(upload_errors))
+
+    return {
+        "dry_run": False,
+        "endpoint": hf_endpoint,
+        "canonical_entry_count": len(canonical_entries),
+        "uploaded_count": uploaded_count,
+        "skipped_count": skipped_count,
+        "snapshot_counts": {
+            "single": len(snapshots["single"]),
+            "multi": len(snapshots["multi"]),
+        },
+    }
+
+
+def _write_website_ready_data(input_dir: Path) -> dict[str, object]:
+    entries = _load_standard_leaderboard_entries(input_dir)
+    snapshots = LeaderboardExporter.build_snapshot_payloads(entries)
+    website_ready_dir = input_dir / "publish" / "website-ready"
+    outputs = {
+        HF_SNAPSHOT_FILES["single"]: snapshots["single"],
+        HF_SNAPSHOT_FILES["multi"]: snapshots["multi"],
+        HF_SNAPSHOT_FILES["marker"]: {
+            "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        },
+    }
+    written_files: dict[str, str] = {}
+    for file_name, payload in outputs.items():
+        written_files[file_name] = str(_write_json_file(website_ready_dir / file_name, payload))
+    return {
+        "output_dir": str(website_ready_dir),
+        "snapshot_counts": {
+            "single": len(snapshots["single"]),
+            "multi": len(snapshots["multi"]),
+        },
+        "files": written_files,
+    }
+
+
+def _sync_website_ready_data(
+    *,
+    website_ready_dir: Path,
+    website_dir: str | None,
+    dry_run: bool,
+) -> dict[str, object]:
+    target_root = Path(website_dir).expanduser() if website_dir else None
+    if target_root is None:
+        return {
+            "mode": "website-ready",
+            "dry_run": dry_run,
+            "synced": False,
+        }
+
+    data_dir = target_root / "data"
+    if dry_run:
+        return {
+            "mode": "website-sync",
+            "dry_run": True,
+            "synced": False,
+            "target_dir": str(data_dir),
+        }
+
+    if not data_dir.is_dir():
+        raise click.ClickException(f"Website data directory not found: {data_dir}")
+
+    copied_files: list[str] = []
+    for file_name in HF_SNAPSHOT_FILES.values():
+        source = website_ready_dir / file_name
+        if not source.is_file():
+            raise click.ClickException(f"Missing website-ready snapshot: {source}")
+        target = data_dir / file_name
+        shutil.copy2(source, target)
+        copied_files.append(str(target))
+
+    return {
+        "mode": "website-sync",
+        "dry_run": False,
+        "synced": True,
+        "target_dir": str(data_dir),
+        "copied_files": copied_files,
+    }
+
+
+def _run_publish_workflow(
+    *,
+    benchmark_output_dir: Path,
+    publish_hf_dataset: str,
+    publish_hf_token: str | None,
+    publish_hf_private: bool,
+    publish_website_dir: str | None,
+    publish_dry_run: bool,
+) -> None:
+    console.print("\n[bold cyan]sageLLM Publish Workflow[/bold cyan]")
+    console.print(f"Artifacts: {benchmark_output_dir}")
+    console.print(f"Dry-run: {publish_dry_run}")
+
+    try:
+        _export_compatibility_leaderboard_artifacts(
+            benchmark_output_dir=benchmark_output_dir,
+            source_command="publish",
+        )
+    except Exception as exc:
+        raise click.ClickException(f"publish export failure: {exc}") from exc
+
+    try:
+        upload_summary = _upload_hf_exports(
+            dataset=publish_hf_dataset,
+            input_dir=benchmark_output_dir,
+            token=publish_hf_token,
+            private=publish_hf_private,
+            dry_run=publish_dry_run,
+        )
+    except Exception as exc:
+        raise click.ClickException(f"publish upload failure: {exc}") from exc
+
+    if upload_summary["dry_run"]:
+        console.print(
+            "[green]✓[/green] upload dry-run: would upload "
+            f"{upload_summary['canonical_entry_count']} canonical entries to {publish_hf_dataset} "
+            f"via {upload_summary['endpoint']}"
+        )
+    else:
+        console.print(
+            f"[green]✓[/green] upload: uploaded {upload_summary['uploaded_count']} entries, "
+            f"skipped {upload_summary['skipped_count']}"
+        )
+
+    try:
+        website_summary = _write_website_ready_data(benchmark_output_dir)
+        website_sync_summary = _sync_website_ready_data(
+            website_ready_dir=Path(website_summary["output_dir"]),
+            website_dir=publish_website_dir,
+            dry_run=publish_dry_run,
+        )
+    except Exception as exc:
+        raise click.ClickException(f"publish website sync failure: {exc}") from exc
+
+    console.print(
+        f"[green]✓[/green] website-ready: single={website_summary['snapshot_counts']['single']}, "
+        f"multi={website_summary['snapshot_counts']['multi']}"
+    )
+    console.print(f"Website-ready output: {website_summary['output_dir']}")
+    if website_sync_summary["mode"] == "website-sync":
+        if website_sync_summary["dry_run"]:
+            console.print(
+                f"[green]✓[/green] website sync dry-run: would sync snapshots into {website_sync_summary['target_dir']}"
+            )
+        else:
+            console.print(
+                f"[green]✓[/green] website sync: copied {len(website_sync_summary['copied_files'])} files into {website_sync_summary['target_dir']}"
+            )
+
+
+def _apply_vllm_compare_safe_env_defaults(hardware_family: str) -> None:
+    """Apply benchmark-safe environment defaults for compare workflows.
+
+    Ascend compare runs are especially sensitive to implicit `torch_npu`
+    autoload and unreachable default Hugging Face endpoints, so set defensive
+    defaults unless the caller already provided explicit values.
+    """
+    os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+    if hardware_family.strip().lower() == "ascend":
+        os.environ.setdefault("TORCH_DEVICE_BACKEND_AUTOLOAD", "0")
 
 
 def _slugify_filename(value: str) -> str:
@@ -242,13 +689,36 @@ def _run_compare_target(
     file_stem = _slugify_filename(label)
     json_path = output_dir / f"{file_stem}.json"
     md_path = output_dir / f"{file_stem}.md"
-    parity_path = output_dir / f"{file_stem}.parity.json"
 
     with open(json_path, "w") as f:
         json.dump(payload, f, indent=2)
     with open(md_path, "w") as f:
         f.write(_format_e2e_markdown(payload) + "\n")
+
+    canonical_artifact = build_live_compare_artifact(
+        label=label,
+        url=url,
+        model=model,
+        hardware_family=hardware_family,
+        batch_sizes=list(batch_sizes),
+        summary=summary,
+        rows=rows,
+        runtime_artifacts=runtime_artifacts,
+        versions=collect_installed_versions(),
+        artifacts={
+            "raw_json": str(json_path),
+            "markdown": str(md_path),
+        },
+    )
+    canonical_path = output_dir / f"{file_stem}.canonical.json"
+    write_canonical_artifact(canonical_path, canonical_artifact)
+
+    parity_path = output_dir / f"{file_stem}.parity.json"
     parity_path.write_text(parity_artifact.model_dump_json(indent=2) + "\n", encoding="utf-8")
+
+    canonical_artifact.setdefault("validation", {})["parity_artifact"] = str(parity_path)
+    canonical_artifact.setdefault("artifacts", {})["parity_json"] = str(parity_path)
+    write_canonical_artifact(canonical_path, canonical_artifact)
 
     return {
         "label": label,
@@ -256,6 +726,7 @@ def _run_compare_target(
         "summary": summary,
         "json": str(json_path),
         "markdown": str(md_path),
+        "canonical_json": str(canonical_path),
         "parity_json": str(parity_path),
         "runtime_artifacts": runtime_artifacts,
         "payload": payload,
@@ -284,7 +755,56 @@ def _write_compare_summary_artifacts(
     with open(comparison_md, "w") as f:
         f.write(_format_compare_markdown(compare_result) + "\n")
 
+    hardware_family = "unknown"
+    first_payload = target_results[0].get("payload") if target_results else None
+    if isinstance(first_payload, dict):
+        hardware_family = str(first_payload.get("hardware_family") or "unknown")
+    canonical_artifact = build_compare_summary_artifact(
+        model=model,
+        hardware_family=hardware_family,
+        batch_sizes=batch_sizes,
+        compare_result=compare_result,
+        target_results=target_results,
+        versions=collect_installed_versions(),
+        artifacts={
+            "raw_json": str(comparison_json),
+            "markdown": str(comparison_md),
+        },
+    )
+    canonical_path = compare_output_dir / "comparison.canonical.json"
+    write_canonical_artifact(canonical_path, canonical_artifact)
+    compare_result["canonical_json"] = str(canonical_path)
+
     return compare_result
+
+
+def _write_local_run_pipeline_artifacts(
+    *,
+    output_dir: Path,
+    results: dict[str, object],
+) -> None:
+    config_file = output_dir / "config.json"
+    if not config_file.exists():
+        raise click.ClickException(f"Missing config.json for canonical export: {config_file}")
+
+    with open(config_file) as f:
+        config = json.load(f)
+    config["output_dir"] = str(output_dir)
+
+    for workload_name, metrics in results.items():
+        metrics_path = output_dir / f"{workload_name}_metrics.json"
+        canonical_artifact = build_local_run_artifact(
+            workload_name=workload_name,
+            metrics=metrics,
+            config=config,
+            artifacts={
+                "raw_json": str(metrics_path),
+                "config_json": str(config_file),
+                "summary_json": str(output_dir / "benchmark_summary.json"),
+            },
+        )
+        canonical_path = output_dir / f"{workload_name}.canonical.json"
+        write_canonical_artifact(canonical_path, canonical_artifact)
 
 
 def _load_compare_result_payload(label: str, path: str) -> dict[str, object]:
@@ -396,12 +916,16 @@ def _capture_target_runtime_artifacts(
     if not isinstance(performance_mainline, dict) or "explicit_decode" not in performance_mainline:
         return runtime_artifacts
 
-    artifact = build_core_decode_telemetry_artifact(
-        telemetry_source_payload,
-        label=label,
-        model=model,
-        hardware_family=hardware_family,
-    )
+    try:
+        artifact = build_core_decode_telemetry_artifact(
+            telemetry_source_payload,
+            label=label,
+            model=model,
+            hardware_family=hardware_family,
+        )
+    except ValueError:
+        return runtime_artifacts
+
     telemetry_path = output_dir / f"{file_stem}_core_telemetry.json"
     telemetry_path.write_text(artifact.model_dump_json(indent=2) + "\n", encoding="utf-8")
     runtime_artifacts["core_telemetry_json"] = str(telemetry_path)
@@ -413,47 +937,88 @@ def _validate_sagellm_explicit_decode_runtime(
     label: str,
     runtime_artifacts: dict[str, str],
 ) -> None:
-    """Fail fast when a sagellm compare target is not running native explicit decode."""
+    """Fail fast unless a sagellm compare target proves explicit-decode mainline use."""
     if not label.lower().startswith("sagellm"):
         return
 
     info_json_path = runtime_artifacts.get("info_json")
     if not info_json_path:
         raise click.ClickException(
-            f"Target '{label}' did not expose /info runtime metadata; cannot verify native explicit decode."
+            f"compare target '{label}' did not expose /info; cannot verify explicit decode mainline"
         )
 
     info_payload = json.loads(Path(info_json_path).read_text(encoding="utf-8"))
-    runtime_info = extract_runtime_info_payload(info_payload)
+    try:
+        runtime_info = extract_runtime_info_payload(info_payload)
+    except ValueError as exc:
+        raise click.ClickException(
+            f"compare target '{label}' exposed an invalid /info payload for explicit decode validation: {exc}"
+        ) from exc
+
     performance_mainline = runtime_info.get("performance_mainline")
     if not isinstance(performance_mainline, dict):
         raise click.ClickException(
-            f"Target '{label}' /info payload is missing performance_mainline; refusing to benchmark an unverified runtime path."
+            f"compare target '{label}' is missing performance_mainline in /info"
         )
 
     explicit_decode = performance_mainline.get("explicit_decode")
     if not isinstance(explicit_decode, dict):
         raise click.ClickException(
-            f"Target '{label}' /info payload is missing performance_mainline.explicit_decode; refusing to benchmark an unverified runtime path."
+            f"compare target '{label}' is missing performance_mainline.explicit_decode in /info"
         )
 
     feature_gate = explicit_decode.get("feature_gate")
     if not isinstance(feature_gate, dict):
         raise click.ClickException(
-            f"Target '{label}' /info payload is missing explicit decode feature gate state; refusing to benchmark an unverified runtime path."
+            f"compare target '{label}' is missing explicit_decode.feature_gate in /info"
         )
 
     if not bool(feature_gate.get("default_enabled", False)):
         raise click.ClickException(
-            f"Target '{label}' reports explicit decode default_enabled=false; fix the serving defaults before benchmarking."
+            f"compare target '{label}' reports explicit decode mainline default_enabled=false"
         )
     if not bool(feature_gate.get("enabled", False)):
         raise click.ClickException(
-            f"Target '{label}' reports explicit decode enabled=false; use the native explicit decode path before benchmarking."
+            f"compare target '{label}' reports explicit decode mainline enabled=false"
         )
     if bool(feature_gate.get("kill_switch_active", False)):
         raise click.ClickException(
-            f"Target '{label}' reports explicit decode kill_switch_active=true; benchmark aborted."
+            f"compare target '{label}' reports explicit decode mainline kill_switch_active=true"
+        )
+
+    decode_runtime_diagnostics = performance_mainline.get("decode_runtime_diagnostics")
+    if not isinstance(decode_runtime_diagnostics, dict):
+        raise click.ClickException(
+            f"compare target '{label}' is missing performance_mainline.decode_runtime_diagnostics"
+        )
+
+    diagnostics_summary = decode_runtime_diagnostics.get("summary")
+    if not isinstance(diagnostics_summary, dict) or not diagnostics_summary:
+        raise click.ClickException(
+            f"compare target '{label}' did not record decode_runtime_diagnostics.summary evidence"
+        )
+
+    core_telemetry_path = runtime_artifacts.get("core_telemetry_json")
+    if not core_telemetry_path:
+        raise click.ClickException(
+            f"compare target '{label}' did not emit core explicit decode telemetry"
+        )
+
+    core_telemetry_payload = json.loads(Path(core_telemetry_path).read_text(encoding="utf-8"))
+    summary = core_telemetry_payload.get("summary")
+    if not isinstance(summary, dict):
+        raise click.ClickException(
+            f"compare target '{label}' emitted malformed core explicit decode telemetry summary"
+        )
+
+    if int(core_telemetry_payload.get("step_telemetry_entries") or 0) <= 0:
+        raise click.ClickException(
+            f"compare target '{label}' emitted zero explicit decode step telemetry entries"
+        )
+
+    if int(summary.get("step_records") or 0) <= 0:
+        raise click.ClickException(
+            f"compare target '{label}' emitted zero explicit decode step records"
         )
 
 
@@ -1069,6 +1634,7 @@ def save_run_config(
         "model_path": model,  # Original model path
         "dataset": dataset,
         "num_samples": num_samples,
+        "mode": metadata.get("mode"),
         "versions": versions,
     }
 
@@ -1101,6 +1667,9 @@ def collect_installed_versions() -> dict[str, str]:
         "sagellm_gateway": "isagellm-gateway",
         "sagellm_comm": "isagellm-comm",
         "sagellm_compression": "isagellm-compression",
+        "vllm": "vllm",
+        "vllm_ascend": "vllm-ascend",
+        "lmdeploy": "lmdeploy",
     }
 
     versions: dict[str, str] = {}
@@ -1120,6 +1689,62 @@ def collect_installed_versions() -> dict[str, str]:
 def main() -> None:
     """sageLLM Benchmark Suite - M1 Demo Contract Validation."""
     pass
+
+
+@main.command("publish")
+@click.option(
+    "--input",
+    "input_dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    required=True,
+    help="Benchmark output directory containing canonical artifacts to publish.",
+)
+@click.option(
+    "--website-dir",
+    type=click.Path(file_okay=False, dir_okay=True),
+    default=None,
+    help="Optional sagellm-website repo root. When set, publish syncs snapshots into <website>/data/.",
+)
+@click.option(
+    "--hf-private/--hf-public",
+    default=False,
+    help="Create the Hugging Face dataset as private/public if it does not exist.",
+)
+@click.option(
+    "--hf-token",
+    type=str,
+    default=None,
+    help="Hugging Face token for publish upload (fallback to HF_TOKEN).",
+)
+@click.option(
+    "--hf-dataset",
+    type=str,
+    default=DEFAULT_PUBLISH_DATASET,
+    show_default=True,
+    help="Hugging Face dataset repo ID used by publish.",
+)
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=False,
+    help="Validate and preview the publish workflow without uploading or syncing files.",
+)
+def publish(
+    input_dir: str,
+    website_dir: str | None,
+    hf_private: bool,
+    hf_token: str | None,
+    hf_dataset: str,
+    dry_run: bool,
+) -> None:
+    """Run the explicit publish workflow for an existing benchmark output directory."""
+    _run_publish_workflow(
+        benchmark_output_dir=Path(input_dir),
+        publish_hf_dataset=hf_dataset,
+        publish_hf_token=hf_token,
+        publish_hf_private=hf_private,
+        publish_website_dir=website_dir,
+        publish_dry_run=dry_run,
+    )
 
 
 @main.group("parity-gate")
@@ -1339,7 +1964,12 @@ def compare_record(
     max_output_tokens: int | None,
     output_dir: str | None,
 ) -> None:
-    """Capture a single target's live benchmark result for later offline comparison."""
+    """Capture one target through the canonical compare pipeline for later offline comparison."""
+    _print_compatibility_layer_notice(
+        entrypoint="compare-record",
+        behavior="the canonical compare target pipeline",
+        recommended_path="sagellm-benchmark compare",
+    )
     compare_output_dir = _create_compare_output_dir(output_dir, prefix="compare-record")
     compare_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1367,6 +1997,10 @@ def compare_record(
     console.print(
         f"[green]✓[/green] {label}: TTFT={summary['avg_ttft_ms']:.2f}ms, "
         f"TBT={summary['avg_tbt_ms']:.2f}ms, TPS={summary['avg_throughput_tps']:.2f}"
+    )
+    _export_compatibility_leaderboard_artifacts(
+        benchmark_output_dir=compare_output_dir,
+        source_command="compare-record",
     )
     console.print(f"JSON: {target_result['json']}")
     console.print(f"Markdown: {target_result['markdown']}")
@@ -1570,6 +2204,11 @@ def validate_serving_consistency(
 )
 def compare_offline(results: tuple[str, ...], output_dir: str | None) -> None:
     """Build comparison artifacts from previously captured single-target results."""
+    _print_compatibility_layer_notice(
+        entrypoint="compare-offline",
+        behavior="offline summary generation over previously captured canonical compare results",
+        recommended_path="sagellm-benchmark compare",
+    )
     if len(results) < 2:
         raise click.BadParameter("Repeat --result at least twice to compare multiple captures.")
 
@@ -1623,6 +2262,7 @@ def compare_offline(results: tuple[str, ...], output_dir: str | None) -> None:
     console.print(f"Comparison Markdown: {comparison_md}")
 
 
+@_add_publish_options
 @main.command()
 @click.option(
     "--workload",
@@ -1706,8 +2346,14 @@ def run(
     verbose: bool,
     dataset: str,
     num_samples: int,
+    publish: bool,
+    publish_dry_run: bool,
+    publish_hf_dataset: str,
+    publish_hf_token: str | None,
+    publish_hf_private: bool,
+    publish_website_dir: str | None,
 ) -> None:
-    """Run benchmark workloads."""
+    """Run the canonical local workload benchmark pipeline."""
     console.print("[bold cyan]sageLLM Benchmark[/bold cyan]")
     console.print(f"Workload: {workload}")
     console.print(f"Backend: {backend}")
@@ -1746,9 +2392,7 @@ def run(
             )
             console.print(f"✓ Loaded {len(dataset_instance)} prompts from ShareGPT")
         except Exception as e:
-            console.print(f"[bold red]Error loading ShareGPT:[/bold red] {e}")
-            console.print("Falling back to default prompts")
-            dataset_instance = None
+            raise click.ClickException(f"ShareGPT dataset load failed: {e}") from e
     elif dataset == "synthetic":
         console.print("Using synthetic ShareGPT-style prompts...")
         from sagellm_benchmark.datasets import SyntheticShareGPTDataset
@@ -1818,8 +2462,10 @@ def run(
     )
 
     # Save run configuration
+    run_metadata = dict(metadata)
+    run_metadata["mode"] = mode
     save_run_config(
-        output_dir, backend, model or "default", workload, dataset, num_samples, metadata
+        output_dir, backend, model or "default", workload, dataset, num_samples, run_metadata
     )
 
     runner = BenchmarkRunner(bench_config)
@@ -1829,6 +2475,11 @@ def run(
 
     try:
         results = asyncio.run(runner.run())
+        _write_local_run_pipeline_artifacts(output_dir=output_dir, results=results)
+        _export_compatibility_leaderboard_artifacts(
+            benchmark_output_dir=output_dir,
+            source_command="run",
+        )
 
         # Display summary
         console.print("\n[bold green]✓ Benchmark completed![/bold green]\n")
@@ -1860,8 +2511,20 @@ def run(
             latest_path = output_dir.parent / "latest"
             console.print(f"[dim]Latest results: {latest_path}[/dim]")
 
+        if publish:
+            _run_publish_workflow(
+                benchmark_output_dir=output_dir,
+                publish_hf_dataset=publish_hf_dataset,
+                publish_hf_token=publish_hf_token,
+                publish_hf_private=publish_hf_private,
+                publish_website_dir=publish_website_dir,
+                publish_dry_run=publish_dry_run,
+            )
+
     except Exception as e:
-        console.print(f"\n[bold red]✗ Benchmark failed:[/bold red] {e}")
+        if isinstance(e, click.ClickException):
+            raise
+        console.print(f"\n[bold red]✗ benchmark failure:[/bold red] {e}")
         if verbose:
             import traceback
 
@@ -2132,6 +2795,7 @@ def perf(
     console.print(f"Markdown: {output_md_path}")
 
 
+@_add_publish_options
 @main.command()
 @click.option(
     "--target",
@@ -2229,27 +2893,51 @@ def compare(
     max_output_tokens: int | None,
     output_dir: str | None,
     prompt_cleanup: bool | None,
+    publish: bool,
+    publish_dry_run: bool,
+    publish_hf_dataset: str,
+    publish_hf_token: str | None,
+    publish_hf_private: bool,
+    publish_website_dir: str | None,
 ) -> None:
-    """Compare multiple inference endpoints through benchmark clients only."""
-    _run_compare_command(
-        targets=targets,
-        target_commands=dict(_parse_label_command(spec) for spec in target_commands),
-        model=model,
-        hardware_family=hardware_family,
-        batch_sizes=batch_sizes,
-        api_key=api_key,
-        request_timeout=request_timeout,
-        server_wait_s=server_wait_s,
-        max_seq_len=max_seq_len,
-        max_output_tokens=max_output_tokens,
-        output_dir=output_dir,
-        prompt_cleanup=prompt_cleanup,
+    """Run the canonical live endpoint compare pipeline."""
+    try:
+        compare_output_dir = _run_compare_command(
+            targets=targets,
+            target_commands=dict(_parse_label_command(spec) for spec in target_commands),
+            model=model,
+            hardware_family=hardware_family,
+            batch_sizes=batch_sizes,
+            api_key=api_key,
+            request_timeout=request_timeout,
+            server_wait_s=server_wait_s,
+            max_seq_len=max_seq_len,
+            max_output_tokens=max_output_tokens,
+            output_dir=output_dir,
+            prompt_cleanup=prompt_cleanup,
+        )
+    except click.ClickException as exc:
+        raise click.ClickException(f"benchmark failure: {exc.format_message()}") from exc
+
+    _export_compatibility_leaderboard_artifacts(
+        benchmark_output_dir=compare_output_dir,
+        source_command="compare",
     )
+
+    if publish:
+        _run_publish_workflow(
+            benchmark_output_dir=compare_output_dir,
+            publish_hf_dataset=publish_hf_dataset,
+            publish_hf_token=publish_hf_token,
+            publish_hf_private=publish_hf_private,
+            publish_website_dir=publish_website_dir,
+            publish_dry_run=publish_dry_run,
+        )
 
 
 @main.group("vllm-compare")
 def vllm_compare() -> None:
-    """Convenience commands for vLLM compare environment setup and runs."""
+    """Convenience wrappers for the canonical compare pipeline and its validated vLLM setup."""
     pass
 
 
@@ -2304,6 +2992,7 @@ def vllm_compare_install_ascend(python_bin: str, sagellm_root: str) -> None:
     console.print("\n[bold green]✓ vLLM Ascend compare environment is ready[/bold green]")
 
 
+@_add_publish_options
 @vllm_compare.command("run")
 @click.option(
     "--vllm-url",
@@ -2413,30 +3102,60 @@ def vllm_compare_run(
     max_output_tokens: int,
     output_dir: str | None,
     prompt_cleanup: bool | None,
+    publish: bool,
+    publish_dry_run: bool,
+    publish_hf_dataset: str,
+    publish_hf_token: str | None,
+    publish_hf_private: bool,
+    publish_website_dir: str | None,
 ) -> None:
-    """Run the standard sageLLM vs vLLM endpoint comparison."""
-    _run_compare_command(
-        targets=(f"sagellm={sagellm_url}", f"vllm={vllm_url}"),
-        target_commands={
-            key: value
-            for key, value in {
-                "sagellm": start_sagellm_cmd,
-                "vllm": start_vllm_cmd,
-            }.items()
-            if value
-        },
-        model=model,
-        hardware_family=hardware_family,
-        batch_sizes=batch_sizes,
-        api_key=api_key,
-        request_timeout=request_timeout,
-        server_wait_s=server_wait_s,
-        max_seq_len=max_seq_len,
-        max_output_tokens=max_output_tokens,
-        output_dir=output_dir,
-        prompt_cleanup=prompt_cleanup,
-        header="sageLLM vs vLLM Compare",
+    """Run the standard sageLLM vs vLLM compare flow as a thin wrapper over compare."""
+    _print_compatibility_layer_notice(
+        entrypoint="vllm-compare run",
+        behavior="sagellm-benchmark compare with standard sagellm/vllm labels and env defaults",
+        recommended_path="sagellm-benchmark compare",
     )
+    _apply_vllm_compare_safe_env_defaults(hardware_family)
+    try:
+        compare_output_dir = _run_compare_command(
+            targets=(f"sagellm={sagellm_url}", f"vllm={vllm_url}"),
+            target_commands={
+                key: value
+                for key, value in {
+                    "sagellm": start_sagellm_cmd,
+                    "vllm": start_vllm_cmd,
+                }.items()
+                if value
+            },
+            model=model,
+            hardware_family=hardware_family,
+            batch_sizes=batch_sizes,
+            api_key=api_key,
+            request_timeout=request_timeout,
+            server_wait_s=server_wait_s,
+            max_seq_len=max_seq_len,
+            max_output_tokens=max_output_tokens,
+            output_dir=output_dir,
+            prompt_cleanup=prompt_cleanup,
+            header="sageLLM vs vLLM Compare",
+        )
+    except click.ClickException as exc:
+        raise click.ClickException(f"benchmark failure: {exc.format_message()}") from exc
+
+    _export_compatibility_leaderboard_artifacts(
+        benchmark_output_dir=compare_output_dir,
+        source_command="vllm-compare run",
+    )
+
+    if publish:
+        _run_publish_workflow(
+            benchmark_output_dir=compare_output_dir,
+            publish_hf_dataset=publish_hf_dataset,
+            publish_hf_token=publish_hf_token,
+            publish_hf_private=publish_hf_private,
+            publish_website_dir=publish_website_dir,
+            publish_dry_run=publish_dry_run,
+        )
 
 
 @main.command()
@@ -2606,7 +3325,7 @@ def report(
     theme: str,
     dpi: int,
 ) -> None:
-    """Generate report from benchmark results."""
+    """Generate helper reports from existing benchmark artifacts; this is not a benchmark execution entrypoint."""
     try:
         with open(input) as f:
             data = json.load(f)
@@ -2890,40 +3609,13 @@ def _extract_engine_version_for_key(entry: dict) -> str:
 
 
 def build_idempotency_key(entry: dict) -> str:
-    """Build idempotency key for one leaderboard entry.
-
-    Key dimensions:
-    - engine
-    - engine version
-    - sagellm version
-    - workload
-    - model name
-    - precision
-    - hardware model/count
-    - node count
-    - config type
-    """
-    cluster = entry.get("cluster") or {}
-    parts = [
-        _normalize_key_part(_extract_engine_for_key(entry)),
-        _normalize_key_part(_extract_engine_version_for_key(entry)),
-        _normalize_key_part(entry.get("sagellm_version")),
-        _normalize_key_part(_extract_workload_for_key(entry)),
-        _normalize_key_part(entry.get("model", {}).get("name")),
-        _normalize_key_part(entry.get("model", {}).get("precision")),
-        _normalize_key_part(entry.get("hardware", {}).get("chip_model")),
-        _normalize_key_part(entry.get("hardware", {}).get("chip_count")),
-        _normalize_key_part(cluster.get("node_count", 1)),
-        _normalize_key_part(entry.get("config_type")),
-    ]
-    return "|".join(parts)
+    """Build idempotency key for one leaderboard entry."""
+    return LeaderboardExporter.build_idempotency_key(entry)
 
 
 def build_canonical_path(entry: dict) -> str:
     """Build canonical dataset path from idempotency key."""
-    key = build_idempotency_key(entry)
-    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:20]
-    return f"canonical/{digest}_leaderboard.json"
+    return LeaderboardExporter.build_canonical_path(entry)
 
 
 def _parse_entry_time(entry: dict) -> tuple[datetime | None, datetime | None]:
@@ -2951,38 +3643,12 @@ def _parse_entry_time(entry: dict) -> tuple[datetime | None, datetime | None]:
 
 def _prefer_newer_entry(current: dict, candidate: dict) -> dict:
     """Pick preferred entry between two same-idempotency-key candidates."""
-    current_submitted, current_release = _parse_entry_time(current)
-    candidate_submitted, candidate_release = _parse_entry_time(candidate)
-
-    if current_submitted and candidate_submitted and candidate_submitted != current_submitted:
-        return candidate if candidate_submitted > current_submitted else current
-    if current_submitted is None and candidate_submitted is not None:
-        return candidate
-    if current_submitted is not None and candidate_submitted is None:
-        return current
-
-    if current_release and candidate_release and candidate_release != current_release:
-        return candidate if candidate_release > current_release else current
-    if current_release is None and candidate_release is not None:
-        return candidate
-    if current_release is not None and candidate_release is None:
-        return current
-
-    current_tps = float(current.get("metrics", {}).get("throughput_tps") or 0.0)
-    candidate_tps = float(candidate.get("metrics", {}).get("throughput_tps") or 0.0)
-    if candidate_tps != current_tps:
-        return candidate if candidate_tps > current_tps else current
-
-    return current
+    return LeaderboardExporter.prefer_newer_entry(current, candidate)
 
 
 def _normalize_entries_payload(payload: dict | list) -> list[dict]:
     """Normalize leaderboard JSON payload to a list of entries."""
-    if isinstance(payload, list):
-        return [item for item in payload if isinstance(item, dict)]
-    if isinstance(payload, dict):
-        return [payload]
-    return []
+    return LeaderboardExporter.normalize_entries_payload(payload)
 
 
 @main.command()
@@ -2998,7 +3664,7 @@ def _normalize_entries_payload(payload: dict | list) -> list[dict]:
     type=click.Path(exists=True, file_okay=False, dir_okay=True),
     default="outputs",
     show_default=True,
-    help="Input directory to scan recursively for *_leaderboard.json files.",
+    help="Input directory containing standard leaderboard export manifests.",
 )
 @click.option(
     "--token",
@@ -3011,17 +3677,38 @@ def _normalize_entries_payload(payload: dict | list) -> list[dict]:
     default=False,
     help="Create dataset repo as private/public if it does not exist.",
 )
-def upload_hf(dataset: str, input_dir: str, token: str | None, private: bool) -> None:
+@click.option(
+    "--dry-run/--no-dry-run",
+    default=False,
+    help="Validate exports and show planned HF updates without uploading.",
+)
+def upload_hf(
+    dataset: str,
+    input_dir: str,
+    token: str | None,
+    private: bool,
+    dry_run: bool,
+) -> None:
     """Upload benchmark leaderboard files to Hugging Face dataset."""
-    try:
-        from huggingface_hub import HfApi, hf_hub_download
-    except ImportError:
-        console.print("[red]❌ missing dependency: huggingface_hub[/red]")
-        console.print("Install with: [cyan]pip install huggingface_hub[/cyan]")
-        sys.exit(1)
+    _print_compatibility_layer_notice(
+        entrypoint="upload-hf",
+        behavior="the canonical publish/export boundary over derived leaderboard artifacts",
+        recommended_path="sagellm-benchmark run --publish or sagellm-benchmark compare --publish",
+    )
+    hf_api_cls = None
+    hf_hub_download = None
+    if not dry_run:
+        try:
+            from huggingface_hub import HfApi, hf_hub_download
+
+            hf_api_cls = HfApi
+        except ImportError:
+            console.print("[red]❌ missing dependency: huggingface_hub[/red]")
+            console.print("Install with: [cyan]pip install huggingface_hub[/cyan]")
+            sys.exit(1)
 
     resolved_token = token or os.getenv("HF_TOKEN")
-    if not resolved_token:
+    if not resolved_token and not dry_run:
         console.print("[red]❌ HF token not provided[/red]")
         console.print("Use --token or set HF_TOKEN environment variable")
         sys.exit(1)
@@ -3030,53 +3717,29 @@ def upload_hf(dataset: str, input_dir: str, token: str | None, private: bool) ->
     os.environ["HF_ENDPOINT"] = hf_endpoint
 
     input_path = Path(input_dir)
-    leaderboard_files = sorted(input_path.rglob("*_leaderboard.json"))
-
-    if not leaderboard_files:
-        console.print(f"[red]❌ No leaderboard files found under: {input_path}[/red]")
-        sys.exit(1)
-
-    api = HfApi(endpoint=hf_endpoint, token=resolved_token)
-
-    try:
-        api.repo_info(repo_id=dataset, repo_type="dataset")
-        console.print(f"[green]✓ Dataset exists:[/green] {dataset}")
-    except Exception:
-        console.print(f"[yellow]⚠ Dataset not found, creating:[/yellow] {dataset}")
-        api.create_repo(repo_id=dataset, repo_type="dataset", private=private)
-        console.print(f"[green]✓ Created dataset:[/green] {dataset}")
-
-    console.print(f"[cyan]Endpoint:[/cyan] {hf_endpoint}")
-    console.print(
-        f"[cyan]Scanning[/cyan] {len(leaderboard_files)} leaderboard files from {input_path}"
-    )
-
-    canonical_entries: dict[str, dict] = {}
-    parse_errors: list[str] = []
-    for file_path in leaderboard_files:
-        try:
-            with open(file_path) as f:
-                payload = json.load(f)
-        except Exception as exc:
-            parse_errors.append(f"{file_path}: {exc}")
-            continue
-
-        for entry in _normalize_entries_payload(payload):
-            key = build_idempotency_key(entry)
-            entry_with_key = json.loads(json.dumps(entry))
-            metadata = entry_with_key.setdefault("metadata", {})
-            metadata["idempotency_key"] = key
-            entry_with_key["canonical_path"] = build_canonical_path(entry_with_key)
-
-            existing = canonical_entries.get(key)
-            canonical_entries[key] = (
-                _prefer_newer_entry(existing, entry_with_key) if existing else entry_with_key
-            )
+    collected_entries, parse_errors = LeaderboardExporter.collect_entries_from_directory(input_path)
 
     if parse_errors:
-        console.print("[yellow]⚠ Some files could not be parsed and were skipped:[/yellow]")
+        console.print("[red]❌ Invalid standard leaderboard exports detected:[/red]")
         for error in parse_errors:
             console.print(f"  - {error}")
+        sys.exit(1)
+
+    if not collected_entries:
+        console.print(f"[red]❌ No standard leaderboard exports found under: {input_path}[/red]")
+        sys.exit(1)
+
+    console.print(f"[cyan]Endpoint:[/cyan] {hf_endpoint}")
+    console.print(f"[cyan]Scanning[/cyan] {len(collected_entries)} entries from {input_path}")
+
+    canonical_entries: dict[str, dict] = {}
+    for entry in collected_entries:
+        entry_with_key = LeaderboardExporter.annotate_entry_identity(entry)
+        key = build_idempotency_key(entry_with_key)
+        existing = canonical_entries.get(key)
+        canonical_entries[key] = (
+            _prefer_newer_entry(existing, entry_with_key) if existing else entry_with_key
+        )
 
     if not canonical_entries:
         console.print("[red]❌ No valid leaderboard entries found for upload[/red]")
@@ -3084,8 +3747,67 @@ def upload_hf(dataset: str, input_dir: str, token: str | None, private: bool) ->
 
     console.print(
         f"[cyan]Idempotent entries:[/cyan] {len(canonical_entries)} "
-        f"(from {len(leaderboard_files)} files)"
+        f"(from {len(collected_entries)} source entries)"
     )
+
+    remote_entries: list[dict] = []
+    api = None
+    if not dry_run:
+        api = hf_api_cls(endpoint=hf_endpoint, token=resolved_token)
+
+        try:
+            api.repo_info(repo_id=dataset, repo_type="dataset")
+            console.print(f"[green]✓ Dataset exists:[/green] {dataset}")
+        except Exception:
+            console.print(f"[yellow]⚠ Dataset not found, creating:[/yellow] {dataset}")
+            api.create_repo(repo_id=dataset, repo_type="dataset", private=private)
+            console.print(f"[green]✓ Created dataset:[/green] {dataset}")
+
+        for snapshot_name in (HF_SNAPSHOT_FILES["single"], HF_SNAPSHOT_FILES["multi"]):
+            try:
+                remote_file = hf_hub_download(
+                    repo_id=dataset,
+                    filename=snapshot_name,
+                    repo_type="dataset",
+                    token=resolved_token,
+                    endpoint=hf_endpoint,
+                )
+            except Exception:
+                continue
+
+            with open(remote_file, encoding="utf-8") as f:
+                remote_payload = json.load(f)
+
+            if not isinstance(remote_payload, list):
+                console.print(f"[red]❌ Remote snapshot {snapshot_name} is not a JSON array[/red]")
+                sys.exit(1)
+
+            try:
+                for index, entry in enumerate(remote_payload):
+                    remote_entries.append(
+                        LeaderboardExporter.validate_leaderboard_entry(
+                            entry,
+                            label=f"remote snapshot {snapshot_name}[{index}]",
+                        )
+                    )
+            except ValueError as exc:
+                console.print(f"[red]❌ Remote snapshot validation failed:[/red] {exc}")
+                sys.exit(1)
+
+    merged_entries = list(remote_entries)
+    merged_entries.extend(canonical_entries.values())
+    snapshots = LeaderboardExporter.build_snapshot_payloads(merged_entries)
+    marker_payload = {"last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+    if dry_run:
+        console.print("[bold green]✅ Dry-run validation passed[/bold green]")
+        console.print(
+            f"Would upload {len(canonical_entries)} canonical entries and refresh "
+            f"{HF_SNAPSHOT_FILES['single']} ({len(snapshots['single'])} entries), "
+            f"{HF_SNAPSHOT_FILES['multi']} ({len(snapshots['multi'])} entries), and "
+            f"{HF_SNAPSHOT_FILES['marker']}."
+        )
+        return
 
     upload_errors: list[str] = []
     skipped_count = 0
@@ -3146,6 +3868,31 @@ def upload_hf(dataset: str, input_dir: str, token: str | None, private: bool) ->
                 upload_errors.append(f"{path_in_repo}: {exc}")
             finally:
                 progress.advance(task)
+
+    for snapshot_name, payload in (
+        (HF_SNAPSHOT_FILES["single"], snapshots["single"]),
+        (HF_SNAPSHOT_FILES["multi"], snapshots["multi"]),
+        (HF_SNAPSHOT_FILES["marker"], marker_payload),
+    ):
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", encoding="utf-8", delete=False
+            ) as temp_file:
+                json.dump(payload, temp_file, indent=2)
+                temp_path = temp_file.name
+
+            api.upload_file(
+                path_or_fileobj=temp_path,
+                path_in_repo=snapshot_name,
+                repo_id=dataset,
+                repo_type="dataset",
+                commit_message=(
+                    f"Update HF leaderboard snapshot {snapshot_name} ({datetime.now().isoformat()})"
+                ),
+            )
+            Path(temp_path).unlink(missing_ok=True)
+        except Exception as exc:  # pragma: no cover - network/runtime dependent
+            upload_errors.append(f"{snapshot_name}: {exc}")
 
     if upload_errors:
         console.print("[red]❌ Upload completed with errors:[/red]")

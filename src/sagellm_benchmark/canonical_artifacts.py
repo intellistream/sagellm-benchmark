@@ -1,0 +1,432 @@
+"""Canonical benchmark artifact builders and exporters."""
+
+from __future__ import annotations
+
+import json
+import uuid
+from dataclasses import asdict
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from sagellm_benchmark.exporters import LeaderboardExporter
+from sagellm_benchmark.types import AggregatedMetrics
+
+CANONICAL_RESULT_SCHEMA_VERSION = "canonical-benchmark-result/v1"
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _require_text(value: str, field_name: str) -> str:
+    normalized = str(value).strip()
+    if not normalized:
+        raise ValueError(f"{field_name} is required for canonical benchmark artifacts")
+    return normalized
+
+
+def _require_mapping(value: Any, field_name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be an object in canonical benchmark artifacts")
+    return value
+
+
+def _coerce_metrics(metrics: AggregatedMetrics | dict[str, Any]) -> dict[str, Any]:
+    if isinstance(metrics, AggregatedMetrics):
+        return asdict(metrics)
+    if isinstance(metrics, dict):
+        return dict(metrics)
+    raise TypeError(f"Unsupported metrics payload type: {type(metrics)!r}")
+
+
+def _resolve_engine_version(label: str, versions: dict[str, Any] | None) -> str | None:
+    resolved_versions = dict(versions or {})
+    normalized = label.strip().lower().replace("-", "_")
+    aliases = [normalized]
+    if normalized == "sagellm":
+        aliases.extend(["sagellm", "sagellm_benchmark", "benchmark"])
+    if normalized == "vllm":
+        aliases.append("vllm")
+    if normalized == "vllm_ascend":
+        aliases.extend(["vllm_ascend", "vllm"])
+    if normalized == "lmdeploy":
+        aliases.append("lmdeploy")
+
+    for alias in aliases:
+        value = resolved_versions.get(alias)
+        if value:
+            return str(value)
+    return None
+
+
+def _artifact_base(
+    *,
+    artifact_kind: str,
+    producer_command: str,
+    model: str,
+    engine_name: str,
+    hardware_family: str,
+    workload_name: str,
+    versions: dict[str, Any] | None,
+    provenance: dict[str, Any] | None,
+    engine: dict[str, Any] | None,
+    workload: dict[str, Any] | None,
+    metrics: AggregatedMetrics | dict[str, Any],
+    measurements: dict[str, Any] | None,
+    telemetry: dict[str, Any] | None,
+    validation: dict[str, Any] | None,
+    artifacts: dict[str, Any] | None,
+    relations: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    producer_command = _require_text(producer_command, "producer_command")
+    model = _require_text(model, "model")
+    engine_name = _require_text(engine_name, "engine_name")
+    hardware_family = _require_text(hardware_family, "hardware_family")
+    workload_name = _require_text(workload_name, "workload_name")
+
+    artifact_provenance = dict(provenance or {})
+    artifact_provenance.setdefault("captured_at", _utc_now_iso())
+
+    return {
+        "schema_version": CANONICAL_RESULT_SCHEMA_VERSION,
+        "artifact_kind": artifact_kind,
+        "artifact_id": str(uuid.uuid4()),
+        "producer": {
+            "name": "sagellm-benchmark",
+            "command": producer_command,
+        },
+        "provenance": artifact_provenance,
+        "hardware": {
+            "family": hardware_family,
+        },
+        "engine": {
+            "name": engine_name,
+            "model": model,
+            **(engine or {}),
+        },
+        "model": {
+            "name": model,
+        },
+        "versions": dict(versions or {}),
+        "workload": {
+            "name": workload_name,
+            **(workload or {}),
+        },
+        "metrics": _coerce_metrics(metrics),
+        "measurements": dict(measurements or {}),
+        "telemetry": dict(telemetry or {}),
+        "validation": dict(validation or {}),
+        "artifacts": dict(artifacts or {}),
+        "relations": list(relations or []),
+    }
+
+
+def build_local_run_artifact(
+    *,
+    workload_name: str,
+    metrics: AggregatedMetrics,
+    config: dict[str, Any],
+    artifacts: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    model = str(config.get("model_path") or config.get("model") or "unknown")
+    backend = str(config.get("backend") or "cpu")
+    dataset = str(config.get("dataset") or "default")
+    run_id = str(config.get("run_id") or workload_name)
+    return _artifact_base(
+        artifact_kind="execution_result",
+        producer_command="run",
+        model=model,
+        engine_name=backend,
+        hardware_family=backend,
+        workload_name=workload_name,
+        versions=config.get("versions"),
+        provenance={
+            "captured_at": config.get("timestamp") or _utc_now_iso(),
+            "run_id": run_id,
+            "output_dir": str(config.get("output_dir") or ""),
+        },
+        engine={
+            "backend": backend,
+            "mode": "embedded-engine",
+            "version": _resolve_engine_version(backend, config.get("versions")),
+            "precision": "FP32",
+        },
+        workload={
+            "dataset": dataset,
+            "selector": config.get("workload"),
+            "mode": config.get("mode", "traffic"),
+            "num_samples": config.get("num_samples"),
+            "precision": "FP32",
+        },
+        metrics=metrics,
+        measurements={
+            "summary": {
+                "total_requests": metrics.total_requests,
+                "successful_requests": metrics.successful_requests,
+                "failed_requests": metrics.failed_requests,
+            },
+        },
+        telemetry={},
+        validation={},
+        artifacts=artifacts,
+        relations=[],
+    )
+
+
+def build_live_compare_artifact(
+    *,
+    label: str,
+    url: str,
+    model: str,
+    hardware_family: str,
+    batch_sizes: list[int],
+    summary: dict[str, Any],
+    rows: list[dict[str, Any]],
+    runtime_artifacts: dict[str, str] | None,
+    versions: dict[str, Any] | None,
+    artifacts: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    precision = next(
+        (
+            str(row.get("precision"))
+            for row in rows
+            if isinstance(row, dict) and row.get("precision")
+        ),
+        "FP16",
+    )
+    if precision.lower() == "live":
+        precision = "FP16"
+
+    return _artifact_base(
+        artifact_kind="execution_result",
+        producer_command="compare",
+        model=model,
+        engine_name=label,
+        hardware_family=hardware_family,
+        workload_name="compare-live",
+        versions=versions,
+        provenance={
+            "captured_at": _utc_now_iso(),
+            "endpoint_url": url,
+        },
+        engine={
+            "endpoint": url,
+            "mode": "endpoint",
+            "backend": hardware_family,
+            "version": _resolve_engine_version(label, versions),
+            "precision": precision,
+        },
+        workload={
+            "batch_sizes": list(batch_sizes),
+            "mode": "live-compare",
+            "precision": precision,
+            "scenarios": sorted(
+                {
+                    str(row.get("scenario"))
+                    for row in rows
+                    if isinstance(row, dict) and row.get("scenario")
+                }
+            ),
+        },
+        metrics=summary,
+        measurements={
+            "summary": dict(summary),
+            "rows": list(rows),
+        },
+        telemetry={
+            "runtime_artifacts": dict(runtime_artifacts or {}),
+        },
+        validation={},
+        artifacts=artifacts,
+        relations=[],
+    )
+
+
+def build_compare_summary_artifact(
+    *,
+    model: str,
+    hardware_family: str,
+    batch_sizes: list[int],
+    compare_result: dict[str, Any],
+    target_results: list[dict[str, Any]],
+    versions: dict[str, Any] | None,
+    artifacts: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return _artifact_base(
+        artifact_kind="comparison_result",
+        producer_command="compare",
+        model=model,
+        engine_name=str(compare_result.get("baseline") or "compare"),
+        hardware_family=hardware_family,
+        workload_name="compare-summary",
+        versions=versions,
+        provenance={
+            "captured_at": _utc_now_iso(),
+        },
+        engine={
+            "mode": "comparison",
+            "baseline": compare_result.get("baseline"),
+        },
+        workload={
+            "batch_sizes": list(batch_sizes),
+            "target_labels": [str(target.get("label")) for target in target_results],
+        },
+        metrics={
+            "target_count": len(target_results),
+        },
+        measurements={
+            "summary": dict(compare_result),
+        },
+        telemetry={},
+        validation={},
+        artifacts=artifacts,
+        relations=[
+            {
+                "kind": "target_artifact",
+                "label": str(target.get("label")),
+                "path": str(target.get("canonical_json") or ""),
+            }
+            for target in target_results
+        ],
+    )
+
+
+def write_canonical_artifact(output_path: Path | str, artifact: dict[str, Any]) -> Path:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def export_leaderboard_from_canonical_artifact(
+    artifact: dict[str, Any],
+    output_path: Path | str,
+) -> dict[str, Any]:
+    return LeaderboardExporter.export_canonical_artifact(artifact, Path(output_path))
+
+
+def validate_canonical_artifact(
+    artifact: dict[str, Any],
+    *,
+    source: Path | str | None = None,
+) -> dict[str, Any]:
+    source_label = str(source) if source is not None else "canonical artifact"
+    payload = _require_mapping(artifact, source_label)
+
+    schema_version = _require_text(
+        payload.get("schema_version", ""), f"{source_label}.schema_version"
+    )
+    if schema_version != CANONICAL_RESULT_SCHEMA_VERSION:
+        raise ValueError(
+            f"{source_label}.schema_version must be {CANONICAL_RESULT_SCHEMA_VERSION!r}, got {schema_version!r}"
+        )
+
+    _require_text(payload.get("artifact_kind", ""), f"{source_label}.artifact_kind")
+    _require_text(payload.get("artifact_id", ""), f"{source_label}.artifact_id")
+
+    producer = _require_mapping(payload.get("producer"), f"{source_label}.producer")
+    _require_text(producer.get("name", ""), f"{source_label}.producer.name")
+    _require_text(producer.get("command", ""), f"{source_label}.producer.command")
+
+    hardware = _require_mapping(payload.get("hardware"), f"{source_label}.hardware")
+    _require_text(hardware.get("family", ""), f"{source_label}.hardware.family")
+
+    engine = _require_mapping(payload.get("engine"), f"{source_label}.engine")
+    _require_text(engine.get("name", ""), f"{source_label}.engine.name")
+    _require_text(engine.get("model", ""), f"{source_label}.engine.model")
+
+    model = _require_mapping(payload.get("model"), f"{source_label}.model")
+    _require_text(model.get("name", ""), f"{source_label}.model.name")
+
+    workload = _require_mapping(payload.get("workload"), f"{source_label}.workload")
+    _require_text(workload.get("name", ""), f"{source_label}.workload.name")
+
+    _require_mapping(payload.get("metrics"), f"{source_label}.metrics")
+    _require_mapping(payload.get("measurements"), f"{source_label}.measurements")
+    _require_mapping(payload.get("telemetry"), f"{source_label}.telemetry")
+    _require_mapping(payload.get("validation"), f"{source_label}.validation")
+    _require_mapping(payload.get("artifacts"), f"{source_label}.artifacts")
+
+    relations = payload.get("relations")
+    if not isinstance(relations, list):
+        raise ValueError(
+            f"{source_label}.relations must be a list in canonical benchmark artifacts"
+        )
+
+    return payload
+
+
+def load_canonical_artifact(input_path: Path | str) -> dict[str, Any]:
+    path = Path(input_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return validate_canonical_artifact(payload, source=path)
+
+
+def collect_canonical_artifacts(
+    input_dir: Path | str,
+) -> tuple[list[tuple[Path, dict[str, Any]]], list[str]]:
+    input_path = Path(input_dir)
+    errors: list[str] = []
+    artifacts: list[tuple[Path, dict[str, Any]]] = []
+
+    canonical_paths = sorted(input_path.rglob("*.canonical.json"))
+    if not canonical_paths:
+        errors.append(f"No *.canonical.json found under: {input_path}")
+        return artifacts, errors
+
+    for canonical_path in canonical_paths:
+        try:
+            artifact = load_canonical_artifact(canonical_path)
+        except Exception as exc:
+            errors.append(f"{canonical_path}: {exc}")
+            continue
+        artifacts.append((canonical_path, artifact))
+
+    return artifacts, errors
+
+
+def export_standard_leaderboard_artifacts(input_dir: Path | str) -> dict[str, Any]:
+    input_path = Path(input_dir)
+    artifacts, errors = collect_canonical_artifacts(input_path)
+    if errors:
+        raise ValueError("\n".join(errors))
+
+    manifest_path = input_path / "leaderboard_manifest.json"
+    if manifest_path.exists():
+        manifest_path.unlink()
+
+    exported: list[dict[str, Any]] = []
+    for canonical_path, artifact in artifacts:
+        if artifact.get("artifact_kind") != "execution_result":
+            continue
+
+        file_stem = canonical_path.name.removesuffix(".canonical.json")
+        leaderboard_path = canonical_path.with_name(f"{file_stem}_leaderboard.json")
+        leaderboard_entry = export_leaderboard_from_canonical_artifact(artifact, leaderboard_path)
+        artifact.setdefault("artifacts", {})["leaderboard_json"] = str(leaderboard_path)
+        write_canonical_artifact(canonical_path, artifact)
+        LeaderboardExporter.register_exported_entry(
+            output_dir=input_path,
+            entry=leaderboard_entry,
+            leaderboard_path=leaderboard_path,
+            canonical_artifact_path=canonical_path,
+        )
+        exported.append(
+            {
+                "canonical_artifact": str(canonical_path),
+                "leaderboard_artifact": str(leaderboard_path),
+                "entry_id": leaderboard_entry["entry_id"],
+                "idempotency_key": leaderboard_entry["metadata"]["idempotency_key"],
+            }
+        )
+
+    if not exported:
+        raise ValueError(f"No execution_result canonical artifacts found under: {input_path}")
+
+    return {
+        "validated_count": len(artifacts),
+        "exported_count": len(exported),
+        "manifest_path": str(manifest_path),
+        "exports": exported,
+    }

@@ -27,6 +27,13 @@ When asked to update package version, change only `_version.py`.
 - `sagellm-benchmark compare` remains the generic multi-endpoint entrypoint; `vllm-compare` is the thin, semantic wrapper for the common vLLM comparison path.
 - `scripts/setup_vllm_ascend_compare_env.sh` is a compatibility/ops layer only. Do not add new primary logic there when the same behavior belongs in the CLI.
 - Benchmark dependency declarations must live in `pyproject.toml` extras. Scripts may pin a validated environment matrix, but must not become an alternate source of truth for compare-client dependencies.
+- When an Ascend host only has the `vllm-ascend` plugin but not the `vllm` package/module, treat that as an environment-matrix or package-layout issue first. Do not keep forcing `python -m vllm.entrypoints.openai.api_server` inside the main `sagellm` env.
+- On older or non-target CANN hosts such as `8.1.RC1`, prefer the official Docker workflow for `vllm-ascend` endpoint serving instead of assembling a full host-side `vllm + vllm-ascend` stack:
+   - `bash scripts/run_vllm_ascend_container.sh start`
+   - `bash scripts/run_vllm_ascend_container.sh status`
+   - `bash scripts/run_vllm_ascend_container.sh logs`
+   - `bash scripts/run_vllm_ascend_container.sh stop`
+- Keep the main `sagellm` conda env stable. Do not install the full `vllm + vllm-ascend` endpoint stack into the main env just to unblock compare.
 
 - In Ascend environments with only `vllm-ascend` installed, `python -m vllm.entrypoints.openai.api_server` may fail because `vllm` package/module is absent.
 - Before assuming an endpoint is `vllm-ascend`, always verify with runtime checks:
@@ -45,6 +52,11 @@ When asked to update package version, change only `_version.py`.
    - `import torch, torch_npu`
    - `torch.npu.is_available()`
    - `torch.npu.set_device('npu:0')` and one small NPU tensor op
+- For `sagellm` endpoint startup on Ascend, always use the wrapper and benchmark mode:
+   - `cd /home/user8/sagellm`
+   - `HF_ENDPOINT=https://hf-mirror.com ./scripts/sagellm_with_ascend_env.sh sagellm serve --backend ascend --model <model> --host 127.0.0.1 --port 8901 --benchmark-mode`
+- For containerized `vllm-ascend`, the readiness contract is still fail-fast and identical to native startup: port listener, process fingerprint, `/health`, and `/v1/models` must all pass before compare is considered valid.
+- Do not confuse “endpoint is up” with “benchmark compare is fully ready”. If `sagellm-benchmark vllm-compare run` still crashes in the benchmark process because of tokenizer download policy, `torch_npu` autoload side effects, or empty `/info` telemetry validation, mark that as a benchmark-side blocker explicitly.
 - If `python -m vllm.entrypoints.openai.api_server` fails with module-missing/entrypoint-mismatch, treat it as environment/package-layout issue first; do not continue benchmark with an unverified server.
 - Startup success criteria are mandatory (all pass):
    - Port bind: `ss -ltnp | grep -E ':<port>'`

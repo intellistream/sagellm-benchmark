@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import random
 import time
 from dataclasses import dataclass
@@ -191,12 +190,15 @@ async def _discover_max_seq_len(
 
     # 2. transformers AutoConfig (works for local paths and cached HF models)
     try:
+        from sagellm_benchmark.clients.openai_client import (
+            GatewayClient,
+            _ensure_hf_endpoint_defaults,
+        )
+
+        _ensure_hf_endpoint_defaults()
         from transformers import AutoConfig  # type: ignore[import-untyped]
 
-        from sagellm_benchmark.clients.openai_client import GatewayClient
-
         config_source, local_only = GatewayClient._resolve_tokenizer_source(model_path)
-        os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
         cfg = AutoConfig.from_pretrained(
             config_source,
             trust_remote_code=True,

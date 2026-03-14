@@ -96,14 +96,26 @@ docker logs sagellm-benchmark-vllm | tail -n 200
 
 ## 5-Minute Quick Start
 
-### Option 1: One-Click Script (Recommended)
+### Option 1: Canonical CLI Mainline (Recommended)
+
+```bash
+cd sagellm-benchmark
+
+# Canonical local benchmark path
+sagellm-benchmark run --workload all --backend cpu --output ./benchmark_results
+
+# Reporting helper over existing artifacts
+sagellm-benchmark report --input ./benchmark_results/benchmark_summary.json --format table
+```
+
+### Option 2: Compatibility Shell Wrapper
 
 ```bash
 cd sagellm-benchmark
 ./run_benchmark.sh
 ```
 
-That's it! Results will be in `./benchmark_results/`
+This wrapper reuses `sagellm-benchmark run`. Results will be in `./benchmark_results/`.
 
 To validate recent `sagellm-core` shared-stream convergence and `sagellm-backend` paged/native convergence against live endpoints:
 
@@ -126,14 +138,17 @@ This profile writes:
 - `<label>_metrics.prom`
 - `<label>_log_probe.json` when `--log-file` is provided
 
-### Option 2: Manual CLI
+`convergence` is also a compatibility wrapper: it reuses `sagellm-benchmark compare`, then adds probe capture and validation packaging.
+
+### Option 3: Manual Compare Mainline
 
 ```bash
-# Run all Q1-Q8 workloads
-sagellm-benchmark run --workload all --backend cpu
-
-# View results
-sagellm-benchmark report
+# Canonical live endpoint compare path
+sagellm-benchmark compare \
+  --target sagellm=http://127.0.0.1:8901/v1 \
+  --target vllm=http://127.0.0.1:8000/v1 \
+  --model Qwen/Qwen2.5-0.5B-Instruct \
+  --hardware-family cuda
 ```
 
 ## What Gets Generated?
@@ -143,10 +158,13 @@ After running, you'll have:
 ```
 benchmark_results/
 ├── benchmark_summary.json       # Overall summary
+├── Q1.canonical.json            # Canonical benchmark artifact
 ├── Q1_metrics.json              # Q1 workload metrics
 ├── Q2_metrics.json              # Q2 workload metrics
 ├── ...
 ├── Q8_metrics.json              # Q8 workload metrics
+├── Q1_leaderboard.json          # Compatibility export
+├── leaderboard_manifest.json    # Compatibility export boundary
 └── REPORT.md                    # Human-readable report
 ```
 
@@ -268,7 +286,7 @@ sagellm-benchmark report --format markdown > REPORT.md
   --batch-size 1 --batch-size 2 --batch-size 4 \
   --model Qwen/Qwen2.5-0.5B-Instruct
 
-# View raw JSON
+# View raw JSON from an existing summary artifact
 sagellm-benchmark report --format json
 ```
 

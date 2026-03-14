@@ -135,3 +135,23 @@ def test_build_core_decode_telemetry_artifact_fails_on_entry_count_mismatch() ->
             model="Qwen/Qwen2.5-0.5B-Instruct",
             hardware_family="cuda",
         )
+
+
+def test_build_core_decode_telemetry_artifact_allows_empty_step_telemetry() -> None:
+    payload = _get_info_payload()
+    payload["performance_mainline"]["explicit_decode"]["step_telemetry"] = []
+    payload["performance_mainline"]["explicit_decode"]["step_telemetry_entries"] = 0
+    payload["performance_mainline"]["explicit_decode"]["last_orchestration_step_id"] = 0
+
+    artifact = build_core_decode_telemetry_artifact(
+        payload,
+        label="sagellm-after",
+        model="Qwen/Qwen2.5-0.5B-Instruct",
+        hardware_family="cuda",
+    )
+
+    assert artifact.step_telemetry == []
+    assert artifact.summary.step_records == 0
+    assert artifact.summary.unique_requests == 0
+    assert artifact.summary.batch_sizes == []
+    assert artifact.summary.by_batch_size == []
